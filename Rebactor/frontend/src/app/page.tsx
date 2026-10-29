@@ -15,7 +15,9 @@ import {
   createEventSource,
 } from "@/lib/api";
 import { LogCard } from "@/components/LogCard";
+import { LoginPage } from "@/components/LoginPage";
 import {
+  LogOut,
   Terminal,
   RefreshCw,
   Search,
@@ -102,10 +104,24 @@ export default function Home() {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [expandedLogId, setExpandedLogId] = useState<string | null>(null);
 
-  // On client mount, read saved section and set isMounted flag to eliminate hydration mismatch
+  const [currentUser, setCurrentUser] = useState<{ name: string; email: string; avatar?: string; role: string } | null>(null);
+
+  // On client mount, read saved user, saved section, and set isMounted flag
   useEffect(() => {
     setIsMounted(true);
     if (typeof window !== "undefined") {
+      const savedUserStr = localStorage.getItem("rebactor_auth_user");
+      if (savedUserStr) {
+        try {
+          const parsed = JSON.parse(savedUserStr);
+          if (parsed && parsed.name) {
+            setCurrentUser(parsed);
+          }
+        } catch {
+          // ignore corrupted json
+        }
+      }
+
       const hash = window.location.hash.replace("#", "") as "ci-cd" | "webhooks" | "rag-kb" | "analytics" | "settings";
       const savedSection = localStorage.getItem("rebactor_nav_section") as "ci-cd" | "webhooks" | "rag-kb" | "analytics" | "settings";
       const target = (hash && ["ci-cd", "webhooks", "rag-kb", "analytics", "settings"].includes(hash))
@@ -114,6 +130,13 @@ export default function Home() {
       setNavSection(target);
     }
   }, []);
+
+  const handleLogout = () => {
+    if (typeof window !== "undefined") {
+      localStorage.removeItem("rebactor_auth_user");
+    }
+    setCurrentUser(null);
+  };
 
   // Sync hash changes if user uses browser Back/Forward buttons
   useEffect(() => {
@@ -377,21 +400,26 @@ export default function Home() {
 
   if (!isMounted) {
     return (
-      <div className="flex h-screen w-screen overflow-hidden bg-[#070b13] text-[#e2e8f0]">
-        <nav className="w-16 shrink-0 bg-[#06080e] border-r border-[#192233]" />
-        <aside className="w-80 shrink-0 bg-[#090d16] border-r border-[#192233]" />
-        <main className="flex-1 h-screen bg-[#070b12]" />
+      <div className="flex h-screen w-screen overflow-hidden bg-black text-[#e2e8f0]">
+        <nav className="w-16 shrink-0 bg-black border-r border-[#151922]" />
+        <aside className="w-80 shrink-0 bg-black border-r border-[#151922]" />
+        <main className="flex-1 h-screen bg-black" />
       </div>
     );
   }
 
+  // Authentication Gate: Render LoginPage if user is not authenticated
+  if (!currentUser) {
+    return <LoginPage onLoginSuccess={(user) => setCurrentUser(user)} />;
+  }
+
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-[#070b13] text-[#e2e8f0]">
+    <div className="flex h-screen w-screen overflow-hidden bg-black text-[#e2e8f0]">
       {/* 1. DATADOG-STYLE SLIM ICON NAVBAR */}
-      <nav className="w-16 shrink-0 bg-[#06080e] border-r border-[#192233] flex flex-col items-center justify-between py-4 select-none z-20">
+      <nav className="w-16 shrink-0 bg-black border-r border-[#151922] flex flex-col items-center justify-between py-4 select-none z-20">
         <div className="flex flex-col items-center gap-6 w-full">
           {/* Rebactor Logo Icon */}
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#1e1b4b] to-[#0f172a] border border-[#312e81] flex items-center justify-center p-1.5 cursor-pointer">
+          <div className="w-10 h-10 rounded-xl bg-black border border-[#222838] flex items-center justify-center p-1.5 cursor-pointer">
             <img
               src="/rebactor-logo.png"
               alt="Rebactor Logo"
@@ -478,14 +506,29 @@ export default function Home() {
           >
             <Server size={18} />
           </button>
-          <div className="w-8 h-8 rounded-full bg-[#1e293b] flex items-center justify-center text-xs font-mono font-bold text-gray-300 border border-[#334155]">
-            AS
+          
+          {/* User Profile Avatar with tooltip & Logout Action */}
+          <div className="group relative flex items-center justify-center">
+            <div
+              title={`${currentUser.name} (${currentUser.role})`}
+              className="w-8 h-8 rounded-full bg-gradient-to-br from-[#1e293b] to-[#0f172a] flex items-center justify-center text-xs font-mono font-bold text-gray-200 border border-[#334155] cursor-pointer shadow-md hover:border-[#a855f7] transition-colors"
+            >
+              {currentUser.avatar || currentUser.name.slice(0, 2).toUpperCase()}
+            </div>
+            {/* Quick Logout Tooltip on Hover */}
+            <button
+              onClick={handleLogout}
+              title="Sign Out"
+              className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-rose-600/90 hover:bg-rose-500 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-sm"
+            >
+              <LogOut size={10} />
+            </button>
           </div>
         </div>
       </nav>
 
       {/* 2. DATADOG-STYLE CONTEXTUAL SECONDARY DRAWER / SIDEBAR */}
-      <aside className="w-80 shrink-0 bg-[#090d16] border-r border-[#192233] flex flex-col justify-between p-5 overflow-y-auto">
+      <aside className="w-80 shrink-0 bg-black border-r border-[#181d28] flex flex-col justify-between p-5 overflow-y-auto">
         <div className="space-y-5">
           {/* Section Header */}
           <div className="flex items-center justify-between border-b border-[#1a2436] pb-3">
@@ -804,9 +847,9 @@ export default function Home() {
       </aside>
 
       {/* 3. MAIN CONTENT WORKSPACE */}
-      <main className="flex-1 h-screen flex flex-col overflow-hidden bg-[#070b12]">
+      <main className="flex-1 h-screen flex flex-col overflow-hidden bg-black">
         {/* Top Breadcrumb Bar */}
-        <div className="h-14 shrink-0 px-6 border-b border-[#172030] flex items-center justify-between bg-[#080d18]/90 backdrop-blur z-10">
+        <div className="h-14 shrink-0 px-6 border-b border-[#181d28] flex items-center justify-between bg-black z-10">
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-2 text-xs font-mono text-gray-400">
               <FolderGit2 size={15} className="text-[#a855f7]" />
@@ -1782,7 +1825,7 @@ export default function Home() {
                   Ingestion Pipelines & Connectivity
                 </span>
 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs font-mono">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-3 text-xs font-mono">
                   <div className="p-3 rounded-xl bg-[#070b13] border border-[#162030] space-y-1">
                     <span className="text-[10px] text-gray-500 uppercase">Webhook Endpoint</span>
                     <div className="text-gray-200 font-semibold truncate">POST /webhook/github</div>
@@ -1796,11 +1839,18 @@ export default function Home() {
                     </span>
                   </div>
                   <div className="p-3 rounded-xl bg-[#070b13] border border-[#162030] space-y-1">
-                    <span className="text-[10px] text-gray-500 uppercase">GitHub Token</span>
+                    <span className="text-[10px] text-gray-500 uppercase">GitHub App Auth</span>
                     <div className="text-gray-200 font-semibold truncate">
-                      {healthStatus?.has_token_configured ? "Token Configured" : "Override Available"}
+                      {healthStatus?.is_github_app_configured ? "Installed & Active" : "App / PAT Ready"}
                     </div>
-                    <span className="text-[10px] text-cyan-400">GitHub Actions API v3</span>
+                    <span className={`text-[10px] ${healthStatus?.is_github_app_configured ? "text-emerald-400" : "text-purple-400"}`}>
+                      {healthStatus?.is_github_app_configured ? "Tokenless Mode" : "Optional Private Key"}
+                    </span>
+                  </div>
+                  <div className="p-3 rounded-xl bg-[#070b13] border border-[#162030] space-y-1">
+                    <span className="text-[10px] text-gray-500 uppercase">Public Repositories</span>
+                    <div className="text-gray-200 font-semibold truncate">Zero-Token Access</div>
+                    <span className="text-[10px] text-cyan-400">Unauthenticated OK</span>
                   </div>
                 </div>
               </div>

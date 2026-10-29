@@ -13,7 +13,7 @@ import hmac
 import hashlib
 import asyncio
 from datetime import datetime, timezone
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Tuple
 from fastapi import FastAPI, HTTPException, Header, Query, Request, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
@@ -135,22 +135,27 @@ class AnalyzeLogRequest(BaseModel):
 # -------------------------------------------------------------
 # Helper Functions
 # -------------------------------------------------------------
-def get_github_headers(token: str) -> Dict[str, str]:
-    return {
+from github_app import resolve_effective_token, is_github_app_configured
+
+
+def get_github_headers(token: Optional[str] = None) -> Dict[str, str]:
+    headers = {
         "Accept": "application/vnd.github+json",
-        "Authorization": f"Bearer {token}",
         "X-GitHub-Api-Version": "2022-11-28",
+        "User-Agent": "Rebactor-DevOps-Assistant",
     }
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    return headers
 
 
-def get_github_token(header_token: Optional[str]) -> str:
-    token = header_token or os.getenv("GITHUB_TOKEN")
-    if not token or token == "your_personal_access_token_here":
-        raise HTTPException(
-            status_code=401,
-            detail="GitHub token not configured. Please supply X-GitHub-Token header or set GITHUB_TOKEN in backend .env",
-        )
-    return token
+async def get_github_token_or_public(
+    header_token: Optional[str],
+    owner: Optional[str] = None,
+    repo: Optional[str] = None,
+) -> Tuple[Optional[str], str]:
+    """Resolve token through GitHub App, User PAT, backend env, or fall back to public unauthenticated mode."""
+    return await resolve_effective_token(header_token=header_token, owner=owner, repo=repo)
 
 
 def verify_github_signature(payload_body: bytes, signature_header: Optional[str], secret: str) -> bool:
@@ -319,12 +324,15 @@ async def process_failed_run_background(owner: str, repo: str, run_id: int, run_
 # -------------------------------------------------------------
 @app.get("/health")
 async def health_check():
-    """Service health and token status check."""
+    """Service health, GitHub App, token, and public repository readiness status check."""
     token_present = bool(os.getenv("GITHUB_TOKEN") and os.getenv("GITHUB_TOKEN") != "your_personal_access_token_here")
+    app_configured = is_github_app_configured()
     return {
         "status": "healthy",
         "service": "AI-Powered DevOps Failure Assistant API",
         "has_token_configured": token_present,
+        "is_github_app_configured": app_configured,
+        "public_repo_mode": True,
         "webhook_endpoint": "/webhook/github",
         "has_webhook_secret": bool(GITHUB_WEBHOOK_SECRET),
     }
@@ -472,18 +480,33 @@ async def get_recent_events():
 # =============================================================
 @app.get("/repos")
 async def get_user_repos(
-    token: Optional[str] = Header(None, alias="X-GitHub-Token", description="GitHub Personal Access Token"),
+    token: Optional[str] = Header(None, alias="X-GitHub-Token", description="GitHub Personal Access Token or App Installation Token"),
 ):
-    """Fetch user repositories sorted by recent activity."""
-    github_token = get_github_token(token)
+    """Fetch user repositories sorted by recent activity using GitHub App, PAT, or return prompt if unauthenticated."""
+    github_token, auth_mode = await get_github_token_or_public(token)
+    
+    # If no token and no GitHub App configured, return graceful empty list indicating manual input is available
+    if not github_token:
+        return {
+            "count": 0,
+            "repos": [],
+            "auth_mode": auth_mode,
+            "message": "Unauthenticated mode: Type any public owner/repo directly in the repository search input.",
+        }
+
     headers = get_github_headers(github_token)
-    repos_url = f"{GITHUB_API_URL}/user/repos"
-    params = {
-        "sort": "updated",
-        "direction": "desc",
-        "per_page": 100,
-        "affiliation": "owner,collaborator,organization_member",
-    }
+    # If using GitHub App installation token, endpoint is /installation/repositories
+    if auth_mode == "github_app":
+        repos_url = f"{GITHUB_API_URL}/installation/repositories"
+        params = {"per_page": 100}
+    else:
+        repos_url = f"{GITHUB_API_URL}/user/repos"
+        params = {
+            "sort": "updated",
+            "direction": "desc",
+            "per_page": 100,
+            "affiliation": "owner,collaborator,organization_member",
+        }
 
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
@@ -495,8 +518,9 @@ async def get_user_repos(
                 )
 
             data = resp.json()
+            raw_repo_list = data.get("repositories", []) if auth_mode == "github_app" else data
             repos: List[Dict[str, Any]] = []
-            for r in data:
+            for r in raw_repo_list:
                 repos.append({
                     "id": r.get("id"),
                     "full_name": r.get("full_name"),
@@ -508,7 +532,7 @@ async def get_user_repos(
                     "updated_at": r.get("updated_at"),
                 })
 
-            return {"count": len(repos), "repos": repos}
+            return {"count": len(repos), "repos": repos, "auth_mode": auth_mode}
     except httpx.RequestError as exc:
         raise HTTPException(status_code=503, detail=f"Failed to connect to GitHub API: {str(exc)}")
 
@@ -517,12 +541,18 @@ async def get_user_repos(
 async def get_failed_logs(
     owner: str,
     repo: str,
-    token: Optional[str] = Header(None, alias="X-GitHub-Token", description="GitHub Personal Access Token"),
+    token: Optional[str] = Header(None, alias="X-GitHub-Token", description="GitHub Personal Access Token or App Installation Token"),
     limit: int = Query(5, ge=1, le=20, description="Max failed workflows to inspect"),
     auto_diagnose: bool = Query(False, description="Whether to automatically run LLM analysis for all failed jobs or defer to on-demand user clicks"),
 ):
-    """Retrieve failed workflow runs and error logs. When auto_diagnose is False, saves LLM quota and runs diagnostics on-demand when requested by user."""
-    github_token = get_github_token(token)
+    """
+    Retrieve failed workflow runs and error logs.
+    Supports:
+    1. GitHub App installation tokens (no user token required)
+    2. Any public repository (unauthenticated access)
+    3. User Personal Access Token (header or env)
+    """
+    github_token, auth_mode = await get_github_token_or_public(token, owner=owner, repo=repo)
     headers = get_github_headers(github_token)
     runs_url = f"{GITHUB_API_URL}/repos/{owner}/{repo}/actions/runs"
 
@@ -530,9 +560,15 @@ async def get_failed_logs(
         async with httpx.AsyncClient(timeout=60.0) as client:
             runs_resp = await client.get(runs_url, headers=headers, params={"per_page": 100})
             if runs_resp.status_code != 200:
+                # If 404 or 403, provide clear message
+                detail_msg = runs_resp.text
+                if runs_resp.status_code == 404:
+                    detail_msg = f"Repository '{owner}/{repo}' not found or is private and requires GitHub App installation / token."
+                elif runs_resp.status_code == 403:
+                    detail_msg = f"Rate limited or forbidden by GitHub API. Install GitHub App or configure token to increase rate limit: {runs_resp.text}"
                 raise HTTPException(
                     status_code=runs_resp.status_code,
-                    detail=f"Failed to fetch workflow runs: {runs_resp.text}",
+                    detail=detail_msg,
                 )
 
             runs_data = runs_resp.json()
@@ -585,15 +621,6 @@ async def get_failed_logs(
                     job_id = job.get("id")
                     job_name = job.get("name", "Unknown Job")
 
-                    # Retrieve logs for failed job
-                    logs_url = f"{GITHUB_API_URL}/repos/{owner}/{repo}/actions/jobs/{job_id}/logs"
-                    logs_resp = await client.get(logs_url, headers=headers, follow_redirects=True)
-
-                    if logs_resp.status_code == 200:
-                        raw_log = logs_resp.text
-                    else:
-                        raw_log = f"Failed to fetch job log output. Status: {logs_resp.status_code}"
-
                     # Step failures
                     failed_steps = [
                         FailedStep(
@@ -605,6 +632,25 @@ async def get_failed_logs(
                         for s in job.get("steps", [])
                         if s.get("conclusion") == "failure"
                     ]
+
+                    # Retrieve logs for failed job
+                    logs_url = f"{GITHUB_API_URL}/repos/{owner}/{repo}/actions/jobs/{job_id}/logs"
+                    logs_resp = await client.get(logs_url, headers=headers, follow_redirects=True)
+
+                    if logs_resp.status_code == 200:
+                        raw_log = logs_resp.text
+                    else:
+                        # Fallback: synthesize informative diagnostic log from step metadata if raw logs require admin auth
+                        failed_step_names = [s.name for s in failed_steps if s.name]
+                        step_summary = f"Failed Step(s): {', '.join(failed_step_names)}" if failed_step_names else "Job completed with conclusion=failure"
+                        raw_log = (
+                            f"Workflow: {run.get('name')} | Job: {job_name}\n"
+                            f"Status: {job.get('status')} | Conclusion: failure\n"
+                            f"{step_summary}\n"
+                            f"Branch: {run.get('head_branch')} | Commit: {run.get('head_sha')}\n"
+                            f"HTML URL: {job.get('html_url')}\n"
+                            f"[Note: Raw terminal log requires repository admin rights or GitHub App permissions to stream full ANSI output.]"
+                        )
 
                     # Parse diagnostic summary using LLM reasoning only if auto_diagnose is enabled
                     diagnostic = None
