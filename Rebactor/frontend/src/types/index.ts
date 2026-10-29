@@ -57,6 +57,7 @@ export interface FailedJobLog {
   job_id: number;
   job_name: string;
   job_url?: string;
+  html_url?: string;
   job_status?: string;
   job_conclusion?: string;
   failed_steps: FailedStep[];
@@ -76,6 +77,7 @@ export interface HealthResponse {
   status: string;
   service: string;
   has_token_configured: boolean;
+  is_github_app_configured?: boolean;
   webhook_endpoint?: string;
   has_webhook_secret?: boolean;
 }

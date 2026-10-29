@@ -571,17 +571,17 @@ export default function Home() {
           {navSection === "ci-cd" && (
             <div className="space-y-4">
               {/* Optional Token Toggle */}
-              <div className="border border-[#1a2538] rounded-lg p-2.5 bg-[#0b101c]">
+              <div className="border border-[#1b263b] rounded-xl p-2.5 bg-[#0c121e]">
                 <button
                   type="button"
                   onClick={() => setShowTokenInput(!showTokenInput)}
-                  className="flex items-center justify-between w-full text-xs font-mono text-cyan-400 hover:text-cyan-300"
+                  className="flex items-center justify-between w-full text-xs font-mono text-gray-300 hover:text-white transition-colors"
                 >
-                  <span className="flex items-center gap-1.5">
+                  <span className="flex items-center gap-1.5 text-cyan-400">
                     <Key size={12} />
                     GitHub Token Override
                   </span>
-                  <span>{showTokenInput ? "▲" : "▼"}</span>
+                  <span className="text-[10px] text-gray-500">{showTokenInput ? "▲ Collapse" : "▼ Configure"}</span>
                 </button>
                 {showTokenInput && (
                   <div className="mt-2 space-y-2">
@@ -604,87 +604,92 @@ export default function Home() {
               </div>
 
               {/* Form */}
-              <form onSubmit={handleFormSubmit} className="space-y-3">
-                <div className="space-y-1">
-                  <div className="flex items-center justify-between text-xs font-mono text-gray-300">
-                    <span className="flex items-center gap-1">
-                      <FolderGit2 size={13} className="text-[#a855f7]" />
-                      Repository
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => loadRepos()}
-                      disabled={loadingRepos}
-                      className="text-[10px] text-gray-400 hover:text-white flex items-center gap-1"
-                    >
-                      <RefreshCw size={10} className={loadingRepos ? "animate-spin" : ""} />
-                      Refresh
-                    </button>
-                  </div>
-                  <select
-                    value={selectedRepoStr}
-                    onChange={handleRepoChange}
-                    disabled={loadingRepos}
-                    className="w-full bg-[#0e1422] border border-[#1b263b] rounded-lg px-2.5 py-2 text-xs font-mono text-gray-200 focus:outline-none focus:border-[#6366f1] transition-colors cursor-pointer"
-                  >
-                    <option value="">
-                      {loadingRepos ? "Loading accessible repos..." : "-- Choose Repository --"}
-                    </option>
-                    {repos.map((r) => (
-                      <option
-                        key={r.id || r.full_name}
-                        value={JSON.stringify({ owner: r.owner, name: r.name })}
+              <form onSubmit={handleFormSubmit} className="space-y-3.5">
+                <div className="p-3 rounded-xl bg-[#0c121e] border border-[#1b263b] space-y-3 shadow-sm">
+                  {/* Repo Selector Header */}
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between text-xs font-mono text-gray-300">
+                      <span className="flex items-center gap-1.5 font-medium text-white">
+                        <FolderGit2 size={13} className="text-[#a855f7]" />
+                        Active Repository
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => loadRepos()}
+                        disabled={loadingRepos}
+                        className="text-[10px] text-gray-400 hover:text-cyan-300 flex items-center gap-1 transition-colors"
                       >
-                        {r.full_name} {r.private ? "🔒" : ""}
+                        <RefreshCw size={10} className={loadingRepos ? "animate-spin" : ""} />
+                        Refresh
+                      </button>
+                    </div>
+                    <select
+                      value={selectedRepoStr}
+                      onChange={handleRepoChange}
+                      disabled={loadingRepos}
+                      className="w-full bg-[#070b13] border border-[#1b263b] rounded-lg px-2.5 py-2 text-xs font-mono text-gray-200 focus:outline-none focus:border-[#6366f1] transition-colors cursor-pointer"
+                    >
+                      <option value="">
+                        {loadingRepos ? "Loading accessible repos..." : "-- Select from GitHub --"}
                       </option>
-                    ))}
-                  </select>
-                </div>
+                      {repos.map((r) => (
+                        <option
+                          key={r.id || r.full_name}
+                          value={JSON.stringify({ owner: r.owner, name: r.name })}
+                        >
+                          {r.full_name} {r.private ? "🔒" : ""}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
 
-                <div className="grid grid-cols-2 gap-2">
-                  <div className="space-y-1">
-                    <label className="text-[11px] font-mono text-gray-400">Owner</label>
-                    <input
-                      type="text"
-                      value={owner}
-                      onChange={(e) => setOwner(e.target.value)}
-                      placeholder="owner"
-                      required
-                      className="w-full bg-[#0e1422] border border-[#1b263b] rounded-lg px-2.5 py-1.5 text-xs font-mono text-white focus:outline-none focus:border-[#6366f1]"
-                    />
+                  {/* Manual Owner / Repo fallback */}
+                  <div className="grid grid-cols-2 gap-2 pt-1 border-t border-[#162032]">
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-mono uppercase tracking-wider text-gray-400">Owner</label>
+                      <input
+                        type="text"
+                        value={owner}
+                        onChange={(e) => setOwner(e.target.value)}
+                        placeholder="e.g. org"
+                        required
+                        className="w-full bg-[#070b13] border border-[#1b263b] rounded-lg px-2.5 py-1.5 text-xs font-mono text-white focus:outline-none focus:border-[#6366f1]"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-mono uppercase tracking-wider text-gray-400">Repo</label>
+                      <input
+                        type="text"
+                        value={repoName}
+                        onChange={(e) => setRepoName(e.target.value)}
+                        placeholder="e.g. service"
+                        required
+                        className="w-full bg-[#070b13] border border-[#1b263b] rounded-lg px-2.5 py-1.5 text-xs font-mono text-white focus:outline-none focus:border-[#6366f1]"
+                      />
+                    </div>
                   </div>
-                  <div className="space-y-1">
-                    <label className="text-[11px] font-mono text-gray-400">Repo</label>
-                    <input
-                      type="text"
-                      value={repoName}
-                      onChange={(e) => setRepoName(e.target.value)}
-                      placeholder="repo"
-                      required
-                      className="w-full bg-[#0e1422] border border-[#1b263b] rounded-lg px-2.5 py-1.5 text-xs font-mono text-white focus:outline-none focus:border-[#6366f1]"
-                    />
-                  </div>
-                </div>
 
-                <div className="space-y-1">
-                  <div className="flex justify-between items-center text-[11px] font-mono text-gray-400">
-                    <span>Scan Limit</span>
-                    <span className="text-[10px] text-gray-500">Max 20</span>
+                  {/* Scan Limit */}
+                  <div className="flex items-center justify-between pt-1 border-t border-[#162032]">
+                    <span className="text-[11px] font-mono text-gray-400">Runs to inspect</span>
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        type="number"
+                        min={1}
+                        max={20}
+                        value={limit}
+                        onChange={(e) => setLimit(Number(e.target.value))}
+                        className="w-16 bg-[#070b13] border border-[#1b263b] rounded-lg px-2 py-1 text-xs font-mono text-center text-white focus:outline-none focus:border-[#6366f1]"
+                      />
+                      <span className="text-[10px] font-mono text-gray-500">max 20</span>
+                    </div>
                   </div>
-                  <input
-                    type="number"
-                    min={1}
-                    max={20}
-                    value={limit}
-                    onChange={(e) => setLimit(Number(e.target.value))}
-                    className="w-full bg-[#0e1422] border border-[#1b263b] rounded-lg px-2.5 py-1.5 text-xs font-mono text-white focus:outline-none focus:border-[#6366f1]"
-                  />
                 </div>
 
                 <button
                   type="submit"
                   disabled={loadingLogs || !owner || !repoName}
-                  className="w-full mt-2 bg-gradient-to-r from-[#6366f1] to-[#8b5cf6] hover:from-[#5558e6] hover:to-[#7c4def] text-white font-mono font-semibold text-xs py-2.5 px-4 rounded-lg transition-all duration-150 flex items-center justify-center gap-2 shadow-[0_0_12px_rgba(99,102,241,0.3)] active:scale-[0.99] disabled:opacity-50 cursor-pointer"
+                  className="w-full bg-gradient-to-r from-[#6366f1] to-[#8b5cf6] hover:from-[#5558e6] hover:to-[#7c4def] text-white font-mono font-semibold text-xs py-2.5 px-4 rounded-lg transition-all duration-150 flex items-center justify-center gap-2 shadow-[0_0_12px_rgba(99,102,241,0.3)] active:scale-[0.99] disabled:opacity-50 cursor-pointer"
                 >
                   {loadingLogs ? (
                     <>
