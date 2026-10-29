@@ -1657,16 +1657,16 @@ export default function Home() {
 
       {/* 4. DEDICATED INCIDENT DETAIL SLIDER DRAWER FROM RIGHT */}
       {selectedIncident && (
-        <div className="fixed inset-0 z-50 overflow-hidden bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-          {/* Backdrop Click Closes Drawer */}
+        <div className="fixed inset-0 z-50 overflow-hidden pointer-events-none">
+          {/* Transparent Backdrop Click Closes Drawer */}
           <div
-            className="absolute inset-0 cursor-pointer"
+            className="absolute inset-0 pointer-events-auto"
             onClick={() => setSelectedIncident(null)}
           />
 
           {/* Right Slide-over Panel */}
-          <div className="absolute inset-y-0 right-0 max-w-full flex pl-10">
-            <div className="w-screen max-w-2xl bg-[#0b101c] border-l border-[#1f2b42] shadow-2xl flex flex-col justify-between overflow-hidden transform transition-all ease-in-out duration-300 animate-in slide-in-from-right">
+          <div className="absolute inset-y-0 right-0 max-w-full flex pl-10 pointer-events-auto">
+            <div className="w-screen max-w-2xl bg-[#0b101c] border-l border-[#1f2b42] shadow-[0_0_40px_rgba(0,0,0,0.8)] flex flex-col justify-between overflow-hidden transform transition-all ease-in-out duration-300 animate-in slide-in-from-right">
               {/* Drawer Header */}
               <div className="px-6 py-5 bg-[#090d18] border-b border-[#1b253a] flex items-start justify-between">
                 <div className="space-y-1.5 pr-4">
