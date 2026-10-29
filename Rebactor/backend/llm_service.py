@@ -22,6 +22,7 @@ class LLMDiagnosticResult(BaseModel):
     auto_fix: str = Field(description="Concrete step-by-step resolution command or code fix")
     confidence: float = Field(default=0.95, description="Confidence rating between 0.0 and 1.0")
     engine: str = Field(default="LLM-Powered", description="Engine used for reasoning")
+    rag_incident_match: Optional[Dict[str, Any]] = Field(default=None, description="Historical organizational incident retrieved via RAG")
 
 
 DEVOPS_PROMPT_TEMPLATE = """
@@ -30,10 +31,13 @@ Analyze the following raw failure log snippet from a CI/CD workflow job and prov
 
 WORKFLOW JOB NAME: {job_name}
 
+{rag_context}
+
 RAW LOG EXCERPT:
 {log_excerpt}
 
 Analyze the error carefully. Classify the problem, determine why it broke, and provide an actionable fix.
+If the retrieved historical incident is relevant, synthesize its past resolution into your auto_fix.
 Respond ONLY with a valid JSON object matching this schema:
 {{
   "category": "Build Failure | Dependency Failure | Configuration Failure | Infrastructure Failure | Test Failure | Timeout",
@@ -50,7 +54,7 @@ Do NOT include any markdown code blocks, backticks, or other text outside the JS
 
 prompt_template = PromptTemplate(
     template=DEVOPS_PROMPT_TEMPLATE,
-    input_variables=["job_name", "log_excerpt"]
+    input_variables=["job_name", "log_excerpt", "rag_context"]
 )
 
 
@@ -90,6 +94,27 @@ async def generate_llm_diagnosis(raw_log: str, job_name: str = "workflow-job") -
     """
     log_snippet = extract_relevant_log_snippet(raw_log)
 
+    # 1. RAG Layer: Search historical incidents matching this error signature
+    rag_incident_match = None
+    rag_context = ""
+    try:
+        from rag_service import search_similar_incidents
+        similar_incidents = search_similar_incidents(raw_log, min_similarity=0.45, top_k=1)
+        if similar_incidents:
+            best_match = similar_incidents[0]
+            rag_incident_match = best_match.model_dump()
+            rag_context = f"""
+RETRIEVED ORGANIZATIONAL INCIDENT (RAG Memory):
+Similar Past Incident ID: {best_match.incident_id}
+Repository: {best_match.repository}
+Workflow: {best_match.workflow_name}
+Past Root Cause: {best_match.root_cause}
+Past Team Resolution: {best_match.resolution}
+Similarity Score: {int(best_match.similarity_score * 100)}% Match
+"""
+    except Exception as rag_err:
+        print(f"[RAG Retrieval Notice] {rag_err}")
+
     openai_key = os.getenv("OPENAI_API_KEY", "")
     groq_key = os.getenv("GROQ_API_KEY", "")
     api_base = os.getenv("LLM_API_BASE", "https://api.openai.com/v1")
@@ -101,9 +126,13 @@ async def generate_llm_diagnosis(raw_log: str, job_name: str = "workflow-job") -
             import httpx
             active_key = groq_key or openai_key
             active_base = "https://api.groq.com/openai/v1" if groq_key and not openai_key else api_base
-            active_model = "llama-3.3-70b-versatile" if groq_key and not openai_key else model_name
+            active_model = os.getenv("LLM_MODEL") or ("llama-3.3-70b-versatile" if groq_key and not openai_key else model_name)
 
-            formatted_prompt = prompt_template.format(job_name=job_name, log_excerpt=log_snippet)
+            formatted_prompt = prompt_template.format(
+                job_name=job_name,
+                log_excerpt=log_snippet,
+                rag_context=rag_context or "No relevant past organizational incidents retrieved for this failure.",
+            )
 
             async with httpx.AsyncClient(timeout=30.0) as client:
                 res = await client.post(
@@ -135,7 +164,8 @@ async def generate_llm_diagnosis(raw_log: str, job_name: str = "workflow-job") -
                         root_cause=parsed.get("root_cause", "Detailed error captured in pipeline execution."),
                         auto_fix=parsed.get("auto_fix", "Review the step logs and resolve syntax/dependency conflicts."),
                         confidence=float(parsed.get("confidence", 0.95)),
-                        engine=f"LangChain ({active_model})",
+                        engine=f"LangChain ({active_model})" + (" + RAG Memory" if rag_incident_match else ""),
+                        rag_incident_match=rag_incident_match,
                     )
         except Exception as llm_err:
             print(f"[LLM Diagnostician Warning] LLM call fell back to local reasoning: {llm_err}")

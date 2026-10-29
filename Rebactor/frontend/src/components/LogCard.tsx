@@ -201,6 +201,28 @@ export function LogCard({ log }: LogCardProps) {
                 </div>
               )}
 
+              {/* RAG Memory Banner (Retrieved Historical Incident) */}
+              {summary.rag_incident_match && (
+                <div className="p-4 rounded-lg bg-[#0e1d2f] border border-cyan-500/40 shadow-sm space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="inline-flex items-center gap-1.5 text-xs font-mono font-semibold text-cyan-300">
+                      <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping" />
+                      RAG Memory Match: {summary.rag_incident_match.incident_id} ({Math.round(summary.rag_incident_match.similarity_score * 100)}% Similarity)
+                    </span>
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-cyan-950 text-cyan-300 border border-cyan-500/30">
+                      Org Knowledge Base
+                    </span>
+                  </div>
+                  <div className="text-xs font-mono text-gray-300">
+                    <span className="text-cyan-400 font-medium">Historical Resolution: </span>
+                    {summary.rag_incident_match.resolution}
+                  </div>
+                  <div className="text-[11px] font-mono text-gray-400">
+                    Source: <code className="text-gray-300">{summary.rag_incident_match.repository}</code> • {summary.rag_incident_match.workflow_name}
+                  </div>
+                </div>
+              )}
+
               {/* Root Cause Box */}
               <div className="p-4 rounded-lg bg-rose-950/20 border border-rose-500/30">
                 <div className="flex items-center gap-2 text-rose-400 text-xs font-mono font-semibold uppercase mb-1.5">

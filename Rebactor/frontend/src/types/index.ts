@@ -16,6 +16,18 @@ export interface FailedStep {
   conclusion?: string;
 }
 
+export interface RagIncidentMatch {
+  incident_id: string;
+  repository: string;
+  workflow_name: string;
+  category: string;
+  failed_step: string;
+  root_cause: string;
+  resolution: string;
+  similarity_score: number;
+  recorded_at: string;
+}
+
 export interface ParsedLogSummary {
   status: string;
   job: string;
@@ -27,6 +39,7 @@ export interface ParsedLogSummary {
   confidence: number;
   auto_fix: string;
   engine?: string;
+  rag_incident_match?: RagIncidentMatch | null;
 }
 
 export interface FailedJobLog {

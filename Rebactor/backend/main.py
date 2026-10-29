@@ -83,6 +83,7 @@ class ParsedLogSummary(BaseModel):
     confidence: float
     auto_fix: str
     engine: Optional[str] = "LangChain + LLM"
+    rag_incident_match: Optional[Dict[str, Any]] = None
 
 
 class FailedJobLog(BaseModel):
@@ -166,8 +167,26 @@ from llm_service import generate_llm_diagnosis
 
 
 async def parse_log_summary(raw_text: str, job_name: str = "unknown-job") -> ParsedLogSummary:
-    """Analyze and generate structured LLM diagnostic summary from CI log output."""
+    """Analyze and generate structured LLM diagnostic summary from CI log output with RAG."""
     llm_res = await generate_llm_diagnosis(raw_text, job_name)
+
+    # Automatically index this diagnosed failure into organizational memory if confidence is high
+    try:
+        from rag_service import store_incident
+        store_incident(
+            repository="current-run",
+            workflow_name=job_name,
+            run_id=None,
+            category=llm_res.category,
+            failed_step=llm_res.failed_step,
+            raw_log=raw_text[:2000],
+            root_cause=llm_res.root_cause,
+            resolution=llm_res.auto_fix,
+            plain_summary=llm_res.plain_summary,
+        )
+    except Exception as store_err:
+        pass
+
     return ParsedLogSummary(
         status="failed",
         job=job_name,
@@ -179,6 +198,7 @@ async def parse_log_summary(raw_text: str, job_name: str = "unknown-job") -> Par
         confidence=llm_res.confidence,
         auto_fix=llm_res.auto_fix,
         engine=llm_res.engine,
+        rag_incident_match=llm_res.rag_incident_match,
     )
 
 
@@ -593,6 +613,15 @@ async def get_failed_logs(
             status_code=503,
             detail=f"Network error communicating with GitHub: {str(exc)}",
         )
+
+
+@app.get("/rag/incidents")
+async def get_rag_knowledge_base():
+    """Retrieve indexed organizational incidents stored in the RAG knowledge base."""
+    from rag_service import get_db_connection
+    conn = get_db_connection()
+    rows = conn.execute("SELECT id, repository, workflow_name, category, failed_step, plain_summary, root_cause, resolution, created_at FROM incidents ORDER BY created_at DESC LIMIT 50").fetchall()
+    return {"incidents": [dict(r) for r in rows]}
 
 
 if __name__ == "__main__":
