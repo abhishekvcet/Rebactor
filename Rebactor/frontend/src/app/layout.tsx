@@ -2,8 +2,11 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "GitHub Actions Detective | CI/CD Failure Diagnostics",
-  description: "Automated root-cause analysis and log extractor for failed GitHub Actions workflows.",
+  title: "Rebactor | AI-Powered DevOps Failure Assistant",
+  description: "Automated root-cause analysis, GitHub Webhook ingestion, and organizational RAG incident memories.",
+  icons: {
+    icon: "/rebactor-logo.png",
+  },
 };
 
 export default function RootLayout({
