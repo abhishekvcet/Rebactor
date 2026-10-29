@@ -64,6 +64,27 @@ export default function Home() {
   const [ragIncidents, setRagIncidents] = useState<any[]>([]);
   const [loadingRag, setLoadingRag] = useState<boolean>(false);
 
+  // Restore navigation section from URL hash or localStorage on mount
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const hash = window.location.hash.replace("#", "") as "ci-cd" | "webhooks" | "rag-kb" | "analytics";
+      const savedSection = localStorage.getItem("datadog_nav_section") as "ci-cd" | "webhooks" | "rag-kb" | "analytics";
+      const targetSection = (hash && ["ci-cd", "webhooks", "rag-kb", "analytics"].includes(hash))
+        ? hash
+        : (savedSection && ["ci-cd", "webhooks", "rag-kb", "analytics"].includes(savedSection) ? savedSection : "ci-cd");
+
+      setNavSection(targetSection);
+    }
+  }, []);
+
+  const handleNavChange = (section: "ci-cd" | "webhooks" | "rag-kb" | "analytics") => {
+    setNavSection(section);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("datadog_nav_section", section);
+      window.location.hash = section;
+    }
+  };
+
   useEffect(() => {
     checkHealth();
     loadRepos();
@@ -224,7 +245,7 @@ export default function Home() {
           {/* Primary Nav Items */}
           <div className="flex flex-col items-center gap-2 w-full px-2">
             <button
-              onClick={() => setNavSection("ci-cd")}
+              onClick={() => handleNavChange("ci-cd")}
               title="CI/CD Pipeline Diagnostics"
               className={`w-11 h-11 rounded-xl flex items-center justify-center transition-all ${
                 navSection === "ci-cd"
@@ -236,7 +257,7 @@ export default function Home() {
             </button>
 
             <button
-              onClick={() => setNavSection("webhooks")}
+              onClick={() => handleNavChange("webhooks")}
               title="Real-Time Webhook Stream"
               className={`w-11 h-11 rounded-xl flex items-center justify-center relative transition-all ${
                 navSection === "webhooks"
@@ -252,7 +273,7 @@ export default function Home() {
 
             <button
               onClick={() => {
-                setNavSection("rag-kb");
+                handleNavChange("rag-kb");
                 loadRagIncidents();
               }}
               title="RAG Knowledge Base & Memories"
@@ -266,7 +287,7 @@ export default function Home() {
             </button>
 
             <button
-              onClick={() => setNavSection("analytics")}
+              onClick={() => handleNavChange("analytics")}
               title="MTTR & Pipeline Health Analytics"
               className={`w-11 h-11 rounded-xl flex items-center justify-center transition-all ${
                 navSection === "analytics"
