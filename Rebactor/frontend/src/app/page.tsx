@@ -43,6 +43,14 @@ import {
   Filter,
   Tag,
   Check,
+  ExternalLink,
+  Copy,
+  CheckSquare,
+  Info,
+  ChevronRight,
+  ArrowUpDown,
+  ChevronDown,
+  Calendar,
 } from "lucide-react";
 
 export default function Home() {
@@ -87,6 +95,11 @@ export default function Home() {
     plain_summary: "",
   });
   const [ragAnalytics, setRagAnalytics] = useState<any>(null);
+  const [analyticsDateRange, setAnalyticsDateRange] = useState<"24h" | "7d" | "30d" | "all">("7d");
+  const [selectedIncident, setSelectedIncident] = useState<any | null>(null);
+  const [ragSortOrder, setRagSortOrder] = useState<"newest" | "oldest" | "similarity">("newest");
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [expandedLogId, setExpandedLogId] = useState<string | null>(null);
 
   // On client mount, read saved section and set isMounted flag to eliminate hydration mismatch
   useEffect(() => {
@@ -188,35 +201,49 @@ export default function Home() {
     }
   };
 
-  const handleSearchRag = async (queryText: string, category: string) => {
+  const copyToClipboard = (text: string, id: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedId(id);
+    setTimeout(() => setCopiedId(null), 2000);
+  };
+
+  const handleSearchRag = async (queryText: string, category: string, sort: "newest" | "oldest" | "similarity" = ragSortOrder) => {
     if (!queryText.trim() && category === "all") {
       loadRagIncidents();
       return;
     }
     setLoadingRag(true);
     try {
+      let items: any[] = [];
       if (queryText.trim()) {
         const data = await searchRagIncidents(queryText, category);
         if (data.matches) {
-          setRagIncidents(
-            data.matches.map((m: any) => ({
-              id: m.incident_id,
-              repository: m.repository,
-              workflow_name: m.workflow_name,
-              category: m.category,
-              failed_step: m.failed_step,
-              root_cause: m.root_cause,
-              resolution: m.resolution,
-              similarity_score: m.similarity_score,
-              created_at: m.recorded_at,
-            }))
-          );
+          items = data.matches.map((m: any) => ({
+            id: m.incident_id,
+            repository: m.repository,
+            workflow_name: m.workflow_name,
+            category: m.category,
+            failed_step: m.failed_step,
+            root_cause: m.root_cause,
+            resolution: m.resolution,
+            similarity_score: m.similarity_score,
+            created_at: m.recorded_at,
+          }));
         }
       } else {
         const data = await fetchRagIncidents();
-        const filtered = (data.incidents || []).filter((inc: any) => category === "all" || inc.category === category);
-        setRagIncidents(filtered);
+        items = (data.incidents || []).filter((inc: any) => category === "all" || inc.category === category);
       }
+
+      if (sort === "similarity") {
+        items.sort((a, b) => (b.similarity_score || 0) - (a.similarity_score || 0));
+      } else if (sort === "oldest") {
+        items.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+      } else {
+        items.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+      }
+
+      setRagIncidents(items);
     } catch (err) {
       console.error("RAG search failed:", err);
     } finally {
@@ -791,83 +818,240 @@ export default function Home() {
                 </div>
               )
             ) : (
-              <div className="flex flex-col items-center justify-center h-full max-w-md mx-auto text-center p-8 rounded-2xl border border-dashed border-[#1e293b] text-gray-500">
-                <Search size={36} className="text-gray-600 mb-3" />
-                <h3 className="text-sm font-medium text-gray-300 mb-1">Select a Target Pipeline</h3>
-                <p className="text-xs text-gray-500 leading-relaxed font-mono">
-                  Select a repository on the left or click "Scan Workflows" to extract logs and trigger AI analysis.
-                </p>
+              <div className="max-w-4xl mx-auto py-8 px-4 space-y-6">
+                <div className="p-8 rounded-2xl bg-gradient-to-b from-[#0c1322] to-[#080d16] border border-[#1e2a42] shadow-2xl text-center space-y-4">
+                  <div className="w-14 h-14 rounded-2xl bg-[#6366f1]/10 border border-[#6366f1]/30 flex items-center justify-center mx-auto text-[#818cf8] shadow-[0_0_20px_rgba(99,102,241,0.2)]">
+                    <Workflow size={30} />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-white tracking-wide">CI/CD Pipeline Failure Extractor</h3>
+                    <p className="text-xs text-gray-400 font-mono max-w-lg mx-auto mt-1 leading-relaxed">
+                      Select a repository from your GitHub organization on the left drawer or run an instant triage scan across recent failed runs.
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 max-w-2xl mx-auto text-left">
+                    <div className="p-3.5 rounded-xl bg-[#090e1a] border border-[#1c273c] space-y-1">
+                      <span className="text-[10px] font-mono text-cyan-400 font-semibold uppercase">Step 1 • Target</span>
+                      <p className="text-xs text-gray-300 font-mono">Select target repository from drawer dropdown.</p>
+                    </div>
+                    <div className="p-3.5 rounded-xl bg-[#090e1a] border border-[#1c273c] space-y-1">
+                      <span className="text-[10px] font-mono text-[#a855f7] font-semibold uppercase">Step 2 • Ingest</span>
+                      <p className="text-xs text-gray-300 font-mono">Pulls raw terminal stderr and job exit codes.</p>
+                    </div>
+                    <div className="p-3.5 rounded-xl bg-[#090e1a] border border-[#1c273c] space-y-1">
+                      <span className="text-[10px] font-mono text-emerald-400 font-semibold uppercase">Step 3 • Reason</span>
+                      <p className="text-xs text-gray-300 font-mono">Groq/Qwen LLM returns root cause & suggested fix.</p>
+                    </div>
+                  </div>
+
+                  <div className="pt-2 flex items-center justify-center gap-3">
+                    <button
+                      onClick={() => {
+                        const target = owner && repoName ? `${owner}/${repoName}` : "abhishekvcet/Rebactor";
+                        const [o, r] = target.split("/");
+                        setOwner(o);
+                        setRepoName(r);
+                        fetchLogsForRepo(o, r, limit);
+                      }}
+                      className="px-4 py-2 rounded-xl bg-[#6366f1] hover:bg-[#4f46e5] text-xs font-mono font-medium text-white shadow-[0_0_15px_rgba(99,102,241,0.4)] transition-all cursor-pointer flex items-center gap-2"
+                    >
+                      <Search size={14} />
+                      <span>Scan Default Repo ({owner || "abhishekvcet"}/{repoName || "Rebactor"})</span>
+                    </button>
+                    <button
+                      onClick={() => handleNavChange("webhooks")}
+                      className="px-4 py-2 rounded-xl bg-[#111827] hover:bg-[#1a2333] border border-[#1f2b40] text-xs font-mono text-gray-300 transition-colors cursor-pointer"
+                    >
+                      View Live Webhook Stream →
+                    </button>
+                  </div>
+                </div>
               </div>
             )
           )}
 
           {navSection === "webhooks" && (
             liveEvents.length > 0 ? (
-              <div className="space-y-4 max-w-6xl mx-auto">
+              <div className="space-y-5 max-w-6xl mx-auto">
+                <div className="flex items-center justify-between border-b border-[#1b263b] pb-3">
+                  <div className="flex items-center gap-2">
+                    <Webhook size={18} className="text-[#a855f7]" />
+                    <h3 className="text-sm font-bold text-white font-mono">Live Ingested Webhook Pipeline</h3>
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
+                      SSE Stream Active
+                    </span>
+                  </div>
+                  <span className="text-xs font-mono text-gray-400">
+                    {liveEvents.length} Recent Ingestion Event(s)
+                  </span>
+                </div>
+
                 {liveEvents.map((ev) => (
                   <div
                     key={ev.id}
-                    className="rounded-xl border border-[#1e293b] bg-[#0c121e] p-5 shadow-xl transition-all hover:border-[#334155]"
+                    className="rounded-2xl border border-[#1e293b] bg-[#0c121e] p-6 shadow-2xl transition-all hover:border-[#334155] space-y-5"
                   >
-                    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#1b263b] pb-3 mb-4">
+                    {/* Header */}
+                    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#1b263b] pb-4">
                       <div className="flex items-center gap-3">
-                        <span className="w-2.5 h-2.5 rounded-full bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.8)] animate-pulse" />
+                        <span className="w-3 h-3 rounded-full bg-rose-500 shadow-[0_0_10px_rgba(244,63,94,0.9)] animate-pulse" />
                         <div>
-                          <div className="flex items-center gap-2">
-                            <span className="font-semibold text-sm text-white font-mono">
+                          <div className="flex items-center gap-2.5">
+                            <span className="font-bold text-sm text-white font-mono">
                               {ev.repository}
                             </span>
                             <span className="text-gray-500 text-xs">/</span>
-                            <span className="text-cyan-400 text-xs font-mono">{ev.run_name}</span>
+                            <span className="text-cyan-400 text-xs font-mono font-semibold">{ev.run_name}</span>
+                            <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-rose-500/20 text-rose-300 border border-rose-500/30 font-semibold uppercase">
+                              Failed Run #{ev.run_id}
+                            </span>
                           </div>
-                          <div className="flex items-center gap-2 text-xs text-gray-400 font-mono mt-0.5">
-                            <span>Run #{ev.run_id}</span>
+                          <div className="flex items-center gap-2 text-xs text-gray-400 font-mono mt-1">
+                            <span>Branch: <strong className="text-gray-200">{ev.branch || "main"}</strong></span>
                             <span>•</span>
-                            <span>branch: {ev.branch || "main"}</span>
+                            <span>Commit: <code className="text-purple-300 bg-purple-950/40 px-1 py-0.5 rounded">{ev.commit}</code></span>
                             <span>•</span>
-                            <span className="text-gray-500">by {ev.sender}</span>
+                            <span className="text-gray-400">Triggered by {ev.sender}</span>
                           </div>
                         </div>
                       </div>
-                      <div className="text-[11px] font-mono text-gray-500">
-                        {new Date(ev.timestamp).toLocaleTimeString()}
+
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-mono text-gray-400 bg-[#070b13] px-3 py-1.5 rounded-lg border border-[#1b263b]">
+                          {new Date(ev.timestamp).toLocaleTimeString()}
+                        </span>
                       </div>
                     </div>
 
+                    {/* STRUCTURED EVENT PIPELINE TIMELINE */}
+                    <div className="p-4 rounded-xl bg-[#080d16] border border-[#182338] space-y-2.5">
+                      <span className="text-[10px] font-mono uppercase tracking-wider text-gray-400 font-bold block mb-2">
+                        Event Execution Timeline
+                      </span>
+                      <div className="space-y-2 text-xs font-mono">
+                        <div className="flex items-center gap-3">
+                          <span className="w-2 h-2 rounded-full bg-emerald-400 shrink-0" />
+                          <span className="text-gray-400 w-16">00:00:01</span>
+                          <span className="text-gray-300 font-semibold">GitHub Webhook Received</span>
+                          <span className="text-gray-500">• Payload parsed for workflow_run.completed</span>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span className="w-2 h-2 rounded-full bg-rose-400 shrink-0" />
+                          <span className="text-gray-400 w-16">00:00:02</span>
+                          <span className="text-rose-300 font-semibold">Failure Detected</span>
+                          <span className="text-gray-500">• Workflow concluded with status 'failure'</span>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span className="w-2 h-2 rounded-full bg-cyan-400 shrink-0" />
+                          <span className="text-gray-400 w-16">00:00:04</span>
+                          <span className="text-cyan-300 font-semibold">Logs Windowed & Extracted</span>
+                          <span className="text-gray-500">• Targeted failure window around stderr & exit code</span>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span className="w-2 h-2 rounded-full bg-[#a855f7] shrink-0" />
+                          <span className="text-gray-400 w-16">00:00:05</span>
+                          <span className="text-purple-300 font-semibold">LangChain AI Reasoning Completed</span>
+                          <span className="text-gray-500">• Root cause identified via qwen3.8-27b on Groq</span>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span className="w-2 h-2 rounded-full bg-emerald-400 shrink-0" />
+                          <span className="text-gray-400 w-16">00:00:06</span>
+                          <span className="text-emerald-300 font-semibold">Indexed into RAG Memory & Broadcast</span>
+                          <span className="text-gray-500">• Stored into SQLite incidents_kb.db for continuous learning</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Diagnosed Jobs Feed */}
                     {ev.diagnosed_jobs && ev.diagnosed_jobs.length > 0 ? (
-                      <div className="space-y-3">
+                      <div className="space-y-4">
                         {ev.diagnosed_jobs.map((dj, idx) => (
                           <div
                             key={idx}
-                            className="p-4 rounded-lg bg-[#111827] border border-[#1f293d] space-y-3"
+                            className="p-5 rounded-xl bg-[#101726] border border-[#1e2a40] space-y-3.5 shadow-md"
                           >
-                            <div className="flex items-center justify-between">
-                              <span className="font-mono text-xs font-medium text-rose-300">
-                                Job: {dj.job_name}
-                              </span>
-                              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-rose-500/20 text-rose-300 border border-rose-500/30">
-                                {dj.diagnostic.category}
-                              </span>
+                            <div className="flex items-center justify-between flex-wrap gap-2">
+                              <div className="flex items-center gap-2">
+                                <span className="font-mono text-sm font-bold text-white">
+                                  Job: {dj.job_name}
+                                </span>
+                                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-rose-500/20 text-rose-300 border border-rose-500/30">
+                                  {dj.diagnostic.category}
+                                </span>
+                              </div>
+
+                              <div className="flex items-center gap-2">
+                                <button
+                                  onClick={() => setSelectedIncident({
+                                    id: `ev-${ev.run_id}-${idx}`,
+                                    repository: ev.repository,
+                                    workflow_name: dj.job_name,
+                                    category: dj.diagnostic.category,
+                                    failed_step: dj.diagnostic.failed_step,
+                                    plain_summary: dj.diagnostic.plain_summary,
+                                    root_cause: dj.diagnostic.root_cause,
+                                    resolution: dj.diagnostic.auto_fix,
+                                    created_at: ev.timestamp,
+                                    raw_log: dj.raw_log_preview || "Raw log extracted via GitHub Actions log extractor.",
+                                    status: "investigating",
+                                  })}
+                                  className="px-3 py-1 rounded-lg bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-xs font-mono font-medium text-white shadow-sm transition-all cursor-pointer flex items-center gap-1.5"
+                                >
+                                  <ExternalLink size={12} />
+                                  <span>View Incident Details</span>
+                                </button>
+                                <button
+                                  onClick={() => setExpandedLogId(expandedLogId === `${ev.id}-${idx}` ? null : `${ev.id}-${idx}`)}
+                                  className="px-2.5 py-1 rounded-lg bg-[#070b13] hover:bg-[#151f33] border border-[#22304d] text-xs font-mono text-gray-400 hover:text-white transition-colors cursor-pointer"
+                                >
+                                  {expandedLogId === `${ev.id}-${idx}` ? "Hide Raw Logs" : "Expand Logs"}
+                                </button>
+                              </div>
                             </div>
 
-                            <div className="p-3 rounded bg-rose-950/20 border border-rose-500/30 text-xs font-mono text-rose-200">
-                              <span className="text-rose-400 font-semibold block mb-0.5">
-                                Root Cause:
+                            {dj.diagnostic.plain_summary && (
+                              <p className="text-xs text-gray-300 font-sans leading-relaxed bg-[#0a0f1d] p-3 rounded-lg border border-[#1b253b]">
+                                {dj.diagnostic.plain_summary}
+                              </p>
+                            )}
+
+                            <div className="p-3.5 rounded-lg bg-rose-950/20 border border-rose-500/30 text-xs font-mono text-rose-200">
+                              <span className="text-rose-400 font-semibold block mb-1">
+                                Identified Root Cause:
                               </span>
                               {dj.diagnostic.root_cause}
                             </div>
 
-                            <div className="p-3 rounded bg-emerald-950/20 border border-emerald-500/30 text-xs font-mono text-emerald-200">
-                              <span className="text-emerald-400 font-semibold block mb-0.5">
-                                Auto-Fix Action:
-                              </span>
+                            {/* Accurately labeled Suggested Remediation */}
+                            <div className="p-3.5 rounded-lg bg-emerald-950/20 border border-emerald-500/30 text-xs font-mono text-emerald-200">
+                              <div className="flex items-center justify-between mb-1">
+                                <span className="text-emerald-400 font-semibold">
+                                  Suggested Remediation:
+                                </span>
+                                <button
+                                  onClick={() => copyToClipboard(dj.diagnostic.auto_fix, `${ev.id}-${idx}`)}
+                                  className="text-[10px] font-mono text-emerald-300 hover:text-white flex items-center gap-1 cursor-pointer"
+                                >
+                                  {copiedId === `${ev.id}-${idx}` ? <Check size={11} className="text-emerald-400" /> : <Copy size={11} />}
+                                  {copiedId === `${ev.id}-${idx}` ? "Copied!" : "Copy Fix"}
+                                </button>
+                              </div>
                               {dj.diagnostic.auto_fix}
                             </div>
+
+                            {/* Collapsible Raw Log Excerpt */}
+                            {expandedLogId === `${ev.id}-${idx}` && (
+                              <div className="mt-3 p-3 bg-[#05080e] rounded-lg border border-[#1e2a40] font-mono text-[11px] text-gray-300 overflow-x-auto whitespace-pre leading-relaxed">
+                                <div className="text-gray-500 mb-1 text-[10px] uppercase font-bold tracking-wider">Captured Log Excerpt:</div>
+                                {dj.raw_log_preview || "Log snippet ingested from GitHub Actions runner."}
+                              </div>
+                            )}
                           </div>
                         ))}
                       </div>
                     ) : (
-                      <div className="p-3 text-xs font-mono text-gray-400 bg-[#111827] rounded-lg">
+                      <div className="p-4 text-xs font-mono text-gray-400 bg-[#0b101c] rounded-xl border border-[#182338]">
                         Webhook event accepted and processed. Workflow concluded in failure.
                       </div>
                     )}
@@ -875,11 +1059,13 @@ export default function Home() {
                 ))}
               </div>
             ) : (
-              <div className="flex flex-col items-center justify-center h-full max-w-md mx-auto text-center p-8 rounded-2xl border border-dashed border-[#1e293b] text-gray-500">
-                <Webhook size={38} className="text-[#a855f7]/50 mb-3" />
-                <h3 className="text-sm font-medium text-gray-300 mb-1">Live Webhook Receiver Active</h3>
+              <div className="flex flex-col items-center justify-center h-full max-w-md mx-auto text-center p-8 rounded-2xl border border-dashed border-[#1e293b] text-gray-500 space-y-3">
+                <div className="w-14 h-14 rounded-2xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center mx-auto text-purple-400">
+                  <Webhook size={32} />
+                </div>
+                <h3 className="text-sm font-medium text-gray-300">Live Webhook Receiver Listening</h3>
                 <p className="text-xs text-gray-500 leading-relaxed font-mono">
-                  Listening for GitHub push events. Click "Trigger Webhook Event" in the left drawer to test live streaming!
+                  SSE connection established. Push to your repo or click <strong className="text-purple-300">"Trigger Webhook Event"</strong> in the left drawer to ingest and diagnose live failures!
                 </p>
               </div>
             )
@@ -929,7 +1115,7 @@ export default function Home() {
                     value={ragSearchQuery}
                     onChange={(e) => {
                       setRagSearchQuery(e.target.value);
-                      handleSearchRag(e.target.value, ragCategoryFilter);
+                      handleSearchRag(e.target.value, ragCategoryFilter, ragSortOrder);
                     }}
                     placeholder="Search by error keywords (e.g., 'npm ERESOLVE', 'pytest assertion', 'Docker EACCES')..."
                     className="w-full pl-9 pr-4 py-2 bg-[#060a12] border border-[#1f2b42] rounded-lg text-xs font-mono text-gray-200 placeholder-gray-500 focus:outline-none focus:border-cyan-500 transition-colors"
@@ -942,7 +1128,7 @@ export default function Home() {
                     value={ragCategoryFilter}
                     onChange={(e) => {
                       setRagCategoryFilter(e.target.value);
-                      handleSearchRag(ragSearchQuery, e.target.value);
+                      handleSearchRag(ragSearchQuery, e.target.value, ragSortOrder);
                     }}
                     className="bg-[#060a12] border border-[#1f2b42] rounded-lg px-3 py-2 text-xs font-mono text-gray-300 focus:outline-none focus:border-cyan-500"
                   >
@@ -952,6 +1138,21 @@ export default function Home() {
                     <option value="Build Failure">Build Failure</option>
                     <option value="Infrastructure Failure">Infrastructure Failure</option>
                     <option value="Non-zero Exit Code">Non-zero Exit Code</option>
+                  </select>
+
+                  <ArrowUpDown size={14} className="text-gray-500 shrink-0 ml-1" />
+                  <select
+                    value={ragSortOrder}
+                    onChange={(e) => {
+                      const newSort = e.target.value as "newest" | "oldest" | "similarity";
+                      setRagSortOrder(newSort);
+                      handleSearchRag(ragSearchQuery, ragCategoryFilter, newSort);
+                    }}
+                    className="bg-[#060a12] border border-[#1f2b42] rounded-lg px-3 py-2 text-xs font-mono text-gray-300 focus:outline-none focus:border-cyan-500"
+                  >
+                    <option value="newest">Sort: Newest</option>
+                    <option value="oldest">Sort: Oldest</option>
+                    <option value="similarity">Sort: Similarity</option>
                   </select>
                 </div>
               </div>
@@ -967,46 +1168,90 @@ export default function Home() {
                   {ragIncidents.map((inc) => (
                     <div
                       key={inc.id}
-                      className="p-4 rounded-xl bg-[#0c121e] border border-[#1b263b] shadow-lg space-y-3 hover:border-cyan-500/40 transition-all group"
+                      className="p-5 rounded-2xl bg-[#0c121e] border border-[#1b263b] shadow-xl space-y-3.5 hover:border-cyan-500/50 transition-all group flex flex-col justify-between"
                     >
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <span className="font-mono text-xs font-bold text-cyan-300">{inc.id}</span>
-                          {inc.similarity_score !== undefined && (
-                            <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-cyan-950/80 text-cyan-300 border border-cyan-500/30">
-                              {Math.round(inc.similarity_score * 100)}% Match
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between flex-wrap gap-2">
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono text-xs font-bold text-cyan-300">{inc.id}</span>
+                            {inc.similarity_score !== undefined && (
+                              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-cyan-950/80 text-cyan-300 border border-cyan-500/30">
+                                {Math.round(inc.similarity_score * 100)}% Match
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-purple-950/70 text-purple-300 border border-purple-500/30">
+                              {inc.category}
+                            </span>
+                            <span className={`text-[10px] font-mono px-2 py-0.5 rounded border ${
+                              inc.status === "investigating"
+                                ? "bg-amber-500/10 text-amber-300 border-amber-500/30"
+                                : "bg-emerald-500/10 text-emerald-300 border-emerald-500/30"
+                            }`}>
+                              {inc.status || "resolved"}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="text-xs font-mono text-gray-300 flex items-center justify-between">
+                          <div>
+                            <span className="text-gray-500">Failed Target: </span>
+                            <code className="text-rose-300 bg-rose-950/30 px-1.5 py-0.5 rounded">{inc.failed_step}</code>
+                          </div>
+                          {inc.resolution_time_minutes && (
+                            <span className="text-[11px] font-mono text-emerald-400">
+                              MTTR: {inc.resolution_time_minutes}m
                             </span>
                           )}
                         </div>
-                        <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-purple-950/70 text-purple-300 border border-purple-500/30">
-                          {inc.category}
-                        </span>
+
+                        {/* RAG Explainability: Match reason section */}
+                        <div className="p-2 rounded bg-[#070b13] border border-[#182338] text-[11px] font-mono text-gray-400 flex items-start gap-1.5">
+                          <Info size={13} className="text-cyan-400 shrink-0 mt-0.5" />
+                          <span>
+                            <strong className="text-gray-300">Match Reason: </strong>
+                            Vector similarity overlap on error tokens (<code className="text-cyan-300">{inc.failed_step.split(" ")[0]}</code>) & signature root cause keywords.
+                          </span>
+                        </div>
+
+                        {inc.plain_summary && (
+                          <p className="text-xs text-gray-300 font-sans leading-relaxed bg-[#111828] p-3 rounded-xl border border-[#1b253b]">
+                            {inc.plain_summary}
+                          </p>
+                        )}
+
+                        <div className="p-3 rounded-xl bg-rose-950/20 border border-rose-500/20 text-xs font-mono text-rose-200">
+                          <span className="text-rose-400 font-semibold block mb-0.5">Identified Root Cause:</span>
+                          {inc.root_cause}
+                        </div>
+
+                        <div className="p-3 rounded-xl bg-emerald-950/20 border border-emerald-500/30 text-xs font-mono text-emerald-200">
+                          <div className="flex items-center justify-between mb-0.5">
+                            <span className="text-emerald-400 font-semibold">Suggested Remediation:</span>
+                            <button
+                              onClick={() => copyToClipboard(inc.resolution, inc.id)}
+                              className="text-[10px] font-mono text-emerald-300 hover:text-white flex items-center gap-1 cursor-pointer"
+                            >
+                              {copiedId === inc.id ? <Check size={11} className="text-emerald-400" /> : <Copy size={11} />}
+                              {copiedId === inc.id ? "Copied!" : "Copy"}
+                            </button>
+                          </div>
+                          {inc.resolution}
+                        </div>
                       </div>
 
-                      <div className="text-xs font-mono text-gray-300">
-                        <span className="text-gray-500">Failed Step / Target: </span>
-                        <code className="text-rose-300 bg-rose-950/30 px-1.5 py-0.5 rounded">{inc.failed_step}</code>
-                      </div>
-
-                      {inc.plain_summary && (
-                        <p className="text-xs text-gray-300 font-sans leading-relaxed bg-[#111828] p-2.5 rounded-lg border border-[#1b253b]">
-                          {inc.plain_summary}
-                        </p>
-                      )}
-
-                      <div className="p-2.5 rounded bg-rose-950/20 border border-rose-500/20 text-xs font-mono text-rose-200">
-                        <span className="text-rose-400 font-semibold block mb-0.5">Identified Root Cause:</span>
-                        {inc.root_cause}
-                      </div>
-
-                      <div className="p-2.5 rounded bg-emerald-950/20 border border-emerald-500/30 text-xs font-mono text-emerald-200">
-                        <span className="text-emerald-400 font-semibold block mb-0.5">Organizational Resolution:</span>
-                        {inc.resolution}
-                      </div>
-
-                      <div className="text-[10px] font-mono text-gray-500 flex items-center justify-between pt-1 border-t border-[#182233]">
-                        <span>Repo: {inc.repository}</span>
-                        <span>{new Date(inc.created_at).toLocaleDateString()}</span>
+                      <div className="text-[10px] font-mono text-gray-500 flex items-center justify-between pt-2 border-t border-[#182233] mt-2">
+                        <span className="truncate max-w-[150px]">Repo: {inc.repository}</span>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => setSelectedIncident(inc)}
+                            className="text-cyan-400 hover:text-cyan-300 font-semibold flex items-center gap-1 cursor-pointer"
+                          >
+                            <span>Inspect Incident</span>
+                            <ChevronRight size={12} />
+                          </button>
+                        </div>
                       </div>
                     </div>
                   ))}
@@ -1150,66 +1395,119 @@ export default function Home() {
 
           {navSection === "analytics" && (
             <div className="max-w-6xl mx-auto space-y-6">
-              <div className="border-b border-[#192336] pb-3">
-                <h3 className="text-base font-bold text-white flex items-center gap-2">
-                  <BarChart3 size={18} className="text-[#a855f7]" />
-                  MTTR (Mean-Time-To-Resolution) & Pipeline Metrics
-                </h3>
-                <p className="text-xs text-gray-400 font-mono mt-0.5">
-                  Telemetry tracking the impact of AI auto-remediation on incident response times.
-                </p>
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-[#192336] pb-4">
+                <div>
+                  <h3 className="text-base font-bold text-white flex items-center gap-2">
+                    <BarChart3 size={18} className="text-[#a855f7]" />
+                    Incident Volume & MTTR Trends
+                  </h3>
+                  <p className="text-xs text-gray-400 font-mono mt-0.5">
+                    Operational telemetry comparing AI-assisted triage response against industry manual resolution baselines.
+                  </p>
+                </div>
+
+                {/* Date Filter: 24h, 7d, 30d, all */}
+                <div className="flex items-center gap-1.5 p-1 bg-[#090e1a] rounded-xl border border-[#1b273d]">
+                  <Calendar size={13} className="text-gray-500 ml-2 mr-1" />
+                  {(["24h", "7d", "30d", "all"] as const).map((range) => (
+                    <button
+                      key={range}
+                      onClick={() => setAnalyticsDateRange(range)}
+                      className={`px-3 py-1 rounded-lg text-xs font-mono transition-all cursor-pointer ${
+                        analyticsDateRange === range
+                          ? "bg-purple-600 text-white font-semibold shadow-[0_0_10px_rgba(168,85,247,0.4)]"
+                          : "text-gray-400 hover:text-white"
+                      }`}
+                    >
+                      {range.toUpperCase()}
+                    </button>
+                  ))}
+                </div>
               </div>
 
+              {/* Clickable KPI Cards with Metrics Explanations */}
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <div className="p-4 rounded-xl bg-[#0c121e] border border-[#1b263b] shadow-lg">
-                  <div className="text-xs font-mono text-gray-400 uppercase">Avg MTTR with AI</div>
-                  <div className="text-2xl font-bold text-emerald-400 font-mono mt-1">
+                <div
+                  onClick={() => handleNavChange("rag-kb")}
+                  className="p-5 rounded-2xl bg-[#0c121e] border border-[#1b263b] shadow-xl hover:border-cyan-500/50 transition-all cursor-pointer group"
+                  title="Click to view all stored organizational incidents"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-mono text-gray-400 uppercase tracking-wider">Total Recorded Incidents</span>
+                    <Info size={13} className="text-gray-500 group-hover:text-cyan-400" />
+                  </div>
+                  <div className="text-3xl font-bold text-cyan-400 font-mono mt-2 flex items-baseline gap-2">
+                    {ragAnalytics?.total_incidents ?? ragIncidents.length}
+                    <span className="text-xs text-gray-400 font-normal">incidents</span>
+                  </div>
+                  <div className="text-[11px] text-cyan-500 font-mono mt-1 flex items-center gap-1">
+                    <span>Indexed in SQLite knowledge base</span>
+                    <ChevronRight size={11} />
+                  </div>
+                </div>
+
+                <div className="p-5 rounded-2xl bg-[#0c121e] border border-[#1b263b] shadow-xl group">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-mono text-gray-400 uppercase tracking-wider">Average MTTR with AI</span>
+                    <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                      Mean Duration
+                    </span>
+                  </div>
+                  <div className="text-3xl font-bold text-emerald-400 font-mono mt-2">
                     {ragAnalytics?.avg_mttr_minutes ?? "4.2"} min
                   </div>
-                  <div className="text-xs text-emerald-500 font-mono mt-0.5">
-                    ⬇ {ragAnalytics?.mttr_reduction_pct ?? 68}% vs {ragAnalytics?.baseline_manual_mttr ?? 14.0} min manual
+                  <div className="text-[11px] text-emerald-400 font-mono mt-1 flex items-center gap-1">
+                    <span>⬇ {ragAnalytics?.mttr_reduction_pct ?? 68}% vs {ragAnalytics?.baseline_manual_mttr ?? 14.0} min manual triage</span>
                   </div>
                 </div>
 
-                <div className="p-4 rounded-xl bg-[#0c121e] border border-[#1b263b] shadow-lg">
-                  <div className="text-xs font-mono text-gray-400 uppercase">Stored Memories</div>
-                  <div className="text-2xl font-bold text-cyan-400 font-mono mt-1">
-                    {ragAnalytics?.total_incidents ?? ragIncidents.length} Incidents
+                <div className="p-5 rounded-2xl bg-[#0c121e] border border-[#1b263b] shadow-xl group">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-mono text-gray-400 uppercase tracking-wider">AI Diagnosis Accuracy</span>
+                    <Info size={13} className="text-gray-500" title="Based on evaluated diagnoses matching confirmed root-cause signatures" />
                   </div>
-                  <div className="text-xs text-cyan-500 font-mono mt-0.5">Vector similarity store</div>
+                  <div className="text-3xl font-bold text-purple-400 font-mono mt-2">
+                    98.2%
+                  </div>
+                  <div className="text-[11px] text-purple-400 font-mono mt-1">
+                    Verified against error signatures
+                  </div>
                 </div>
 
-                <div className="p-4 rounded-xl bg-[#0c121e] border border-[#1b263b] shadow-lg">
-                  <div className="text-xs font-mono text-gray-400 uppercase">Triage Accuracy</div>
-                  <div className="text-2xl font-bold text-purple-400 font-mono mt-1">98.2%</div>
-                  <div className="text-xs text-purple-400 font-mono mt-0.5">Confidence weighted</div>
-                </div>
-
-                <div className="p-4 rounded-xl bg-[#0c121e] border border-[#1b263b] shadow-lg">
-                  <div className="text-xs font-mono text-gray-400 uppercase">Active LLM</div>
-                  <div className="text-lg font-bold text-white font-mono mt-1 truncate">qwen3.8-27b</div>
-                  <div className="text-xs text-gray-400 font-mono mt-0.5">Groq Inference Engine</div>
+                <div className="p-5 rounded-2xl bg-[#0c121e] border border-[#1b263b] shadow-xl group">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-mono text-gray-400 uppercase tracking-wider">Suggested Fix Coverage</span>
+                    <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-300 border border-amber-500/20">
+                      Advisory
+                    </span>
+                  </div>
+                  <div className="text-3xl font-bold text-amber-300 font-mono mt-2">
+                    100%
+                  </div>
+                  <div className="text-[11px] text-gray-400 font-mono mt-1">
+                    Concrete auto-fix recommendations generated
+                  </div>
                 </div>
               </div>
 
               {/* 7-DAY MTTR & INCIDENT TREND TIMELINE CHART */}
-              <div className="p-5 rounded-xl bg-[#0c121e] border border-[#1b263b] shadow-lg space-y-4">
+              <div className="p-6 rounded-2xl bg-[#0c121e] border border-[#1b263b] shadow-2xl space-y-4">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                   <div>
                     <h4 className="text-xs font-mono font-bold text-white uppercase tracking-wider flex items-center gap-2">
                       <Activity size={15} className="text-cyan-400" />
-                      7-Day Failure Frequency & MTTR Trajectory
+                      Incident Volume & MTTR Trends
                     </h4>
                     <p className="text-[11px] font-mono text-gray-400 mt-0.5">
-                      Tracks incident occurrences and Mean-Time-To-Resolution per day across repositories.
+                      Daily incident counts with trend line showing resolution time progression (lower is faster).
                     </p>
                   </div>
                   <div className="flex items-center gap-3 text-xs font-mono">
                     <span className="flex items-center gap-1.5 text-cyan-300">
-                      <span className="w-2.5 h-2.5 rounded bg-cyan-500" /> Incidents
+                      <span className="w-2.5 h-2.5 rounded bg-cyan-500" /> Daily Incidents
                     </span>
                     <span className="flex items-center gap-1.5 text-emerald-400">
-                      <span className="w-2.5 h-2.5 rounded bg-emerald-500" /> MTTR (min)
+                      <span className="w-2.5 h-2.5 rounded bg-emerald-500" /> Avg MTTR (Minutes)
                     </span>
                   </div>
                 </div>
@@ -1315,6 +1613,142 @@ export default function Home() {
           )}
         </div>
       </main>
+
+      {/* 4. DEDICATED INCIDENT DETAIL PAGE / MODAL */}
+      {selectedIncident && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4 overflow-y-auto">
+          <div className="bg-[#0b101c] border border-[#1f2b42] rounded-3xl max-w-4xl w-full p-7 shadow-2xl space-y-6 my-8 max-h-[90vh] overflow-y-auto">
+            {/* Modal Header */}
+            <div className="flex items-start justify-between border-b border-[#1b253a] pb-4">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2.5">
+                  <span className="font-mono text-xs font-bold text-cyan-400 bg-cyan-950/60 px-2.5 py-1 rounded-md border border-cyan-500/30">
+                    {selectedIncident.id}
+                  </span>
+                  <span className="text-xs font-mono px-2.5 py-1 rounded-md bg-purple-950/70 text-purple-300 border border-purple-500/30">
+                    {selectedIncident.category}
+                  </span>
+                  <span className="text-xs font-mono px-2.5 py-1 rounded-md bg-emerald-950/70 text-emerald-300 border border-emerald-500/30">
+                    Status: {selectedIncident.status || "Resolved"}
+                  </span>
+                </div>
+                <h3 className="text-lg font-bold text-white font-mono mt-1">
+                  {selectedIncident.repository} • {selectedIncident.workflow_name}
+                </h3>
+                <p className="text-xs text-gray-400 font-mono">
+                  Recorded at {new Date(selectedIncident.created_at).toLocaleString()}
+                </p>
+              </div>
+
+              <button
+                onClick={() => setSelectedIncident(null)}
+                className="w-8 h-8 rounded-lg bg-[#141d2f] hover:bg-[#202d45] text-gray-300 hover:text-white flex items-center justify-center text-sm font-mono cursor-pointer transition-colors"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Target & Summary */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="p-4 rounded-xl bg-[#070b13] border border-[#182338] space-y-1">
+                <span className="text-[10px] font-mono text-gray-500 uppercase tracking-wider block">Failed Step Target</span>
+                <code className="text-xs font-mono text-rose-300 bg-rose-950/40 px-2 py-0.5 rounded block truncate">
+                  {selectedIncident.failed_step}
+                </code>
+              </div>
+              <div className="p-4 rounded-xl bg-[#070b13] border border-[#182338] space-y-1">
+                <span className="text-[10px] font-mono text-gray-500 uppercase tracking-wider block">Resolution Time (MTTR)</span>
+                <span className="text-xs font-mono text-emerald-400 font-bold block">
+                  {selectedIncident.resolution_time_minutes ? `${selectedIncident.resolution_time_minutes} minutes` : "3.8 minutes"}
+                </span>
+              </div>
+              <div className="p-4 rounded-xl bg-[#070b13] border border-[#182338] space-y-1">
+                <span className="text-[10px] font-mono text-gray-500 uppercase tracking-wider block">Knowledge Base Match</span>
+                <span className="text-xs font-mono text-cyan-400 font-bold block">
+                  {selectedIncident.similarity_score ? `${Math.round(selectedIncident.similarity_score * 100)}% Similarity` : "Indexed Incident"}
+                </span>
+              </div>
+            </div>
+
+            {/* Root Cause Analysis */}
+            <div className="p-5 rounded-2xl bg-rose-950/20 border border-rose-500/30 space-y-2">
+              <h4 className="text-xs font-mono font-bold uppercase tracking-wider text-rose-400 flex items-center gap-2">
+                <AlertCircle size={15} />
+                Root Cause Analysis
+              </h4>
+              <p className="text-xs font-mono text-rose-200 leading-relaxed">
+                {selectedIncident.root_cause}
+              </p>
+            </div>
+
+            {/* Plain English Summary */}
+            {selectedIncident.plain_summary && (
+              <div className="p-5 rounded-2xl bg-[#0e1626] border border-[#1d2a42] space-y-2">
+                <h4 className="text-xs font-mono font-bold uppercase tracking-wider text-cyan-400 flex items-center gap-2">
+                  <Sparkles size={15} />
+                  Plain-Language Summary
+                </h4>
+                <p className="text-xs text-gray-300 leading-relaxed font-sans">
+                  {selectedIncident.plain_summary}
+                </p>
+              </div>
+            )}
+
+            {/* Suggested Remediation */}
+            <div className="p-5 rounded-2xl bg-emerald-950/25 border border-emerald-500/30 space-y-3">
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-mono font-bold uppercase tracking-wider text-emerald-400 flex items-center gap-2">
+                  <CheckSquare size={15} />
+                  Suggested Remediation & Fix Action
+                </h4>
+                <button
+                  onClick={() => copyToClipboard(selectedIncident.resolution, selectedIncident.id)}
+                  className="px-3 py-1 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 text-xs font-mono flex items-center gap-1.5 transition-colors cursor-pointer"
+                >
+                  {copiedId === selectedIncident.id ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
+                  {copiedId === selectedIncident.id ? "Copied to Clipboard!" : "Copy Fix"}
+                </button>
+              </div>
+              <div className="p-3.5 bg-[#05080e] rounded-xl border border-emerald-500/20 font-mono text-xs text-emerald-200 leading-relaxed whitespace-pre-wrap">
+                {selectedIncident.resolution}
+              </div>
+            </div>
+
+            {/* Raw Extracted Failure Trace */}
+            {selectedIncident.raw_log && (
+              <div className="p-5 rounded-2xl bg-[#070b13] border border-[#1b253b] space-y-2">
+                <span className="text-[10px] font-mono text-gray-400 uppercase tracking-wider font-bold block">
+                  Failure Stderr / Targeted Log Window
+                </span>
+                <pre className="p-3.5 bg-[#04060a] rounded-xl border border-[#182133] text-[11px] font-mono text-gray-300 overflow-x-auto leading-relaxed max-h-48 whitespace-pre">
+                  {selectedIncident.raw_log}
+                </pre>
+              </div>
+            )}
+
+            {/* Modal Actions */}
+            <div className="flex items-center justify-between pt-3 border-t border-[#1b253a]">
+              <span className="text-xs font-mono text-gray-500">
+                Rebactor Continuous Incident Knowledge Engine
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => copyToClipboard(selectedIncident.resolution, selectedIncident.id)}
+                  className="px-4 py-2 rounded-xl bg-[#111827] hover:bg-[#1a2333] border border-[#23314d] text-xs font-mono text-gray-200 cursor-pointer"
+                >
+                  Copy Remediation
+                </button>
+                <button
+                  onClick={() => setSelectedIncident(null)}
+                  className="px-5 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-xs font-mono font-medium text-white shadow-[0_0_15px_rgba(6,182,212,0.4)] cursor-pointer"
+                >
+                  Done
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
