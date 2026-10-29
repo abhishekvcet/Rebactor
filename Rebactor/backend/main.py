@@ -166,7 +166,12 @@ def verify_github_signature(payload_body: bytes, signature_header: Optional[str]
 from llm_service import generate_llm_diagnosis
 
 
-async def parse_log_summary(raw_text: str, job_name: str = "unknown-job") -> ParsedLogSummary:
+async def parse_log_summary(
+    raw_text: str,
+    job_name: str = "unknown-job",
+    repository: str = "unknown-repo",
+    run_id: Optional[int] = None,
+) -> ParsedLogSummary:
     """Analyze and generate structured LLM diagnostic summary from CI log output with RAG."""
     llm_res = await generate_llm_diagnosis(raw_text, job_name)
 
@@ -174,9 +179,9 @@ async def parse_log_summary(raw_text: str, job_name: str = "unknown-job") -> Par
     try:
         from rag_service import store_incident
         store_incident(
-            repository="current-run",
+            repository=repository,
             workflow_name=job_name,
-            run_id=None,
+            run_id=run_id,
             category=llm_res.category,
             failed_step=llm_res.failed_step,
             raw_log=raw_text[:2000],
@@ -261,6 +266,25 @@ async def process_failed_run_background(owner: str, repo: str, run_id: int, run_
                 "diagnostic": mock_diagnostic.model_dump(),
                 "raw_log_preview": "##[error] Process completed with exit code 1.\nFAIL src/test/pipeline.test.ts",
             })
+
+        # Index each diagnosed failure into the persistent RAG memory store
+        try:
+            from rag_service import store_incident
+            for dj in diagnosed_jobs:
+                diag = dj.get("diagnostic", {})
+                store_incident(
+                    repository=f"{owner}/{repo}",
+                    workflow_name=dj.get("job_name", "ci-job"),
+                    run_id=run_id,
+                    category=diag.get("category", "Build Failure"),
+                    failed_step=diag.get("failed_step", "Execution Error"),
+                    raw_log=dj.get("raw_log_preview", ""),
+                    root_cause=diag.get("root_cause", "Pipeline step failed."),
+                    resolution=diag.get("auto_fix", "Inspect build flags."),
+                    plain_summary=diag.get("plain_summary"),
+                )
+        except Exception as kb_err:
+            print(f"[Webhook RAG Indexing Notice] {kb_err}")
 
         event_record = {
             "id": f"event-{run_id}-{int(datetime.now(timezone.utc).timestamp())}",
@@ -575,7 +599,12 @@ async def get_failed_logs(
                     ]
 
                     # Parse diagnostic summary using LLM reasoning
-                    diagnostic = await parse_log_summary(raw_log, job_name)
+                    diagnostic = await parse_log_summary(
+                        raw_log,
+                        job_name,
+                        repository=f"{owner}/{repo}",
+                        run_id=run_id,
+                    )
 
                     extracted_results.append(
                         FailedJobLog(
@@ -615,6 +644,17 @@ async def get_failed_logs(
         )
 
 
+class ManualIncidentCreate(BaseModel):
+    repository: str
+    workflow_name: str
+    category: str
+    failed_step: str
+    raw_log: str
+    root_cause: str
+    resolution: str
+    plain_summary: Optional[str] = None
+
+
 @app.get("/rag/incidents")
 async def get_rag_knowledge_base():
     """Retrieve indexed organizational incidents stored in the RAG knowledge base."""
@@ -622,6 +662,39 @@ async def get_rag_knowledge_base():
     conn = get_db_connection()
     rows = conn.execute("SELECT id, repository, workflow_name, category, failed_step, plain_summary, root_cause, resolution, created_at FROM incidents ORDER BY created_at DESC LIMIT 50").fetchall()
     return {"incidents": [dict(r) for r in rows]}
+
+
+@app.get("/rag/search")
+async def search_rag_incidents(query: str, category: Optional[str] = None):
+    """Search knowledge base using hybrid vector token cosine & keyword relevance."""
+    from rag_service import search_similar_incidents
+    results = search_similar_incidents(raw_log=query, min_similarity=0.25, top_k=6, category_filter=category)
+    return {"query": query, "matches": [r.model_dump() for r in results]}
+
+
+@app.post("/rag/incidents")
+async def create_rag_incident(payload: ManualIncidentCreate):
+    """Manually contribute an organizational postmortem or run fix into the knowledge base."""
+    from rag_service import store_incident
+    inc_id = store_incident(
+        repository=payload.repository,
+        workflow_name=payload.workflow_name,
+        run_id=None,
+        category=payload.category,
+        failed_step=payload.failed_step,
+        raw_log=payload.raw_log,
+        root_cause=payload.root_cause,
+        resolution=payload.resolution,
+        plain_summary=payload.plain_summary,
+    )
+    return {"success": True, "incident_id": inc_id, "message": "Incident memory indexed successfully"}
+
+
+@app.get("/rag/analytics")
+async def get_rag_metrics():
+    """Retrieve RAG knowledge base metrics, category distributions, and telemetry."""
+    from rag_service import get_rag_analytics
+    return get_rag_analytics()
 
 
 if __name__ == "__main__":

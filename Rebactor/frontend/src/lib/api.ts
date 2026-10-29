@@ -47,6 +47,45 @@ export async function fetchRagIncidents() {
   return res.json();
 }
 
+export async function searchRagIncidents(query: string, category?: string) {
+  const url = new URL(`${API_URL}/rag/search`);
+  url.searchParams.set("query", query);
+  if (category && category !== "all") {
+    url.searchParams.set("category", category);
+  }
+  const res = await fetch(url.toString());
+  if (!res.ok) throw new Error("Failed to search RAG knowledge base");
+  return res.json();
+}
+
+export async function createManualRagIncident(payload: {
+  repository: string;
+  workflow_name: string;
+  category: string;
+  failed_step: string;
+  raw_log: string;
+  root_cause: string;
+  resolution: string;
+  plain_summary?: string;
+}) {
+  const res = await fetch(`${API_URL}/rag/incidents`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to create manual incident memory");
+  }
+  return res.json();
+}
+
+export async function fetchRagAnalytics() {
+  const res = await fetch(`${API_URL}/rag/analytics`);
+  if (!res.ok) throw new Error("Failed to load RAG analytics");
+  return res.json();
+}
+
 export async function simulateWebhookFailure(payload: {
   repo: string;
   workflow: string;

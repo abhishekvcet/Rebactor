@@ -131,20 +131,46 @@ def store_incident(
     return incident_id
 
 
-def search_similar_incidents(raw_log: str, min_similarity: float = 0.4, top_k: int = 3) -> List[RetrievedIncident]:
-    """Retrieve historical incidents from the vector knowledge base matching the failure log."""
+def search_similar_incidents(
+    raw_log: str,
+    min_similarity: float = 0.35,
+    top_k: int = 4,
+    category_filter: Optional[str] = None,
+) -> List[RetrievedIncident]:
+    """Retrieve historical incidents from the vector knowledge base matching the failure log with hybrid cosine & keyword matching."""
     query_tokens = tokenize_error_log(raw_log)
     if not query_tokens:
         return []
 
     conn = get_db_connection()
-    rows = conn.execute("SELECT * FROM incidents ORDER BY created_at DESC LIMIT 100").fetchall()
+    if category_filter:
+        rows = conn.execute(
+            "SELECT * FROM incidents WHERE category = ? ORDER BY created_at DESC LIMIT 100",
+            (category_filter,)
+        ).fetchall()
+    else:
+        rows = conn.execute("SELECT * FROM incidents ORDER BY created_at DESC LIMIT 100").fetchall()
 
     results: List[RetrievedIncident] = []
+    query_text_lower = raw_log.lower()
+
     for r in rows:
-        stored_tokens = json.loads(r["error_tokens"])
-        score = compute_cosine_similarity(query_tokens, stored_tokens)
-        if score >= min_similarity:
+        try:
+            stored_tokens = json.loads(r["error_tokens"])
+        except Exception:
+            stored_tokens = []
+
+        # Cosine similarity on token vector
+        cos_score = compute_cosine_similarity(query_tokens, stored_tokens)
+
+        # Keyword text overlap boost for root cause & failed step
+        step_boost = 0.15 if r["failed_step"].lower() in query_text_lower else 0.0
+        cause_keywords = [w for w in re.findall(r"\w{4,}", r["root_cause"].lower()) if w in query_text_lower]
+        keyword_boost = min(0.25, len(cause_keywords) * 0.05)
+
+        total_score = min(1.0, cos_score + step_boost + keyword_boost)
+
+        if total_score >= min_similarity:
             results.append(
                 RetrievedIncident(
                     incident_id=r["id"],
@@ -154,13 +180,38 @@ def search_similar_incidents(raw_log: str, min_similarity: float = 0.4, top_k: i
                     failed_step=r["failed_step"],
                     root_cause=r["root_cause"],
                     resolution=r["resolution"],
-                    similarity_score=round(score, 2),
+                    similarity_score=round(total_score, 2),
                     recorded_at=r["created_at"],
                 )
             )
 
     results.sort(key=lambda x: x.similarity_score, reverse=True)
     return results[:top_k]
+
+
+def get_rag_analytics() -> Dict[str, Any]:
+    """Calculate RAG knowledge base statistics and MTTR insights."""
+    conn = get_db_connection()
+    total_count = conn.execute("SELECT count(*) as c FROM incidents").fetchone()["c"]
+
+    categories = conn.execute("""
+        SELECT category, count(*) as count 
+        FROM incidents 
+        GROUP BY category 
+        ORDER BY count DESC
+    """).fetchall()
+
+    category_stats = [{"category": row["category"], "count": row["count"]} for row in categories]
+
+    recent_rows = conn.execute(
+        "SELECT id, repository, workflow_name, category, failed_step, plain_summary, resolution, created_at FROM incidents ORDER BY created_at DESC LIMIT 10"
+    ).fetchall()
+
+    return {
+        "total_incidents": total_count,
+        "category_distribution": category_stats,
+        "recent_incidents": [dict(r) for r in recent_rows],
+    }
 
 
 def seed_knowledge_base():

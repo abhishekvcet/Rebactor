@@ -8,6 +8,9 @@ import {
   fetchFailedLogs,
   fetchRecentWebhookEvents,
   fetchRagIncidents,
+  searchRagIncidents,
+  createManualRagIncident,
+  fetchRagAnalytics,
   simulateWebhookFailure,
   createEventSource,
 } from "@/lib/api";
@@ -36,6 +39,10 @@ import {
   HelpCircle,
   Clock,
   Sparkles,
+  Plus,
+  Filter,
+  Tag,
+  Check,
 } from "lucide-react";
 
 export default function Home() {
@@ -65,6 +72,21 @@ export default function Home() {
   // RAG Incidents state
   const [ragIncidents, setRagIncidents] = useState<any[]>([]);
   const [loadingRag, setLoadingRag] = useState<boolean>(false);
+  const [ragSearchQuery, setRagSearchQuery] = useState<string>("");
+  const [ragCategoryFilter, setRagCategoryFilter] = useState<string>("all");
+  const [showAddMemoryModal, setShowAddMemoryModal] = useState<boolean>(false);
+  const [addingMemory, setAddingMemory] = useState<boolean>(false);
+  const [newMemory, setNewMemory] = useState({
+    repository: "abhishekvcet/Rebactor",
+    workflow_name: "CI Build & Test",
+    category: "Dependency Failure",
+    failed_step: "npm run build",
+    raw_log: "",
+    root_cause: "",
+    resolution: "",
+    plain_summary: "",
+  });
+  const [ragAnalytics, setRagAnalytics] = useState<any>(null);
 
   // On client mount, read saved section and set isMounted flag to eliminate hydration mismatch
   useEffect(() => {
@@ -155,10 +177,84 @@ export default function Home() {
       if (data.incidents) {
         setRagIncidents(data.incidents);
       }
+      const analytics = await fetchRagAnalytics().catch(() => null);
+      if (analytics) {
+        setRagAnalytics(analytics);
+      }
     } catch {
       // ignore
     } finally {
       setLoadingRag(false);
+    }
+  };
+
+  const handleSearchRag = async (queryText: string, category: string) => {
+    if (!queryText.trim() && category === "all") {
+      loadRagIncidents();
+      return;
+    }
+    setLoadingRag(true);
+    try {
+      if (queryText.trim()) {
+        const data = await searchRagIncidents(queryText, category);
+        if (data.matches) {
+          setRagIncidents(
+            data.matches.map((m: any) => ({
+              id: m.incident_id,
+              repository: m.repository,
+              workflow_name: m.workflow_name,
+              category: m.category,
+              failed_step: m.failed_step,
+              root_cause: m.root_cause,
+              resolution: m.resolution,
+              similarity_score: m.similarity_score,
+              created_at: m.recorded_at,
+            }))
+          );
+        }
+      } else {
+        const data = await fetchRagIncidents();
+        const filtered = (data.incidents || []).filter((inc: any) => category === "all" || inc.category === category);
+        setRagIncidents(filtered);
+      }
+    } catch (err) {
+      console.error("RAG search failed:", err);
+    } finally {
+      setLoadingRag(false);
+    }
+  };
+
+  const handleCreateMemorySubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newMemory.root_cause || !newMemory.resolution) return;
+    setAddingMemory(true);
+    try {
+      await createManualRagIncident({
+        repository: newMemory.repository,
+        workflow_name: newMemory.workflow_name,
+        category: newMemory.category,
+        failed_step: newMemory.failed_step,
+        raw_log: newMemory.raw_log || `${newMemory.failed_step} failed with error`,
+        root_cause: newMemory.root_cause,
+        resolution: newMemory.resolution,
+        plain_summary: newMemory.plain_summary || newMemory.root_cause,
+      });
+      setShowAddMemoryModal(false);
+      setNewMemory({
+        repository: "abhishekvcet/Rebactor",
+        workflow_name: "CI Build & Test",
+        category: "Dependency Failure",
+        failed_step: "npm run build",
+        raw_log: "",
+        root_cause: "",
+        resolution: "",
+        plain_summary: "",
+      });
+      loadRagIncidents();
+    } catch (err) {
+      console.error("Failed to add memory:", err);
+    } finally {
+      setAddingMemory(false);
     }
   };
 
@@ -790,55 +886,265 @@ export default function Home() {
           )}
 
           {navSection === "rag-kb" && (
-            <div className="max-w-6xl mx-auto space-y-4">
-              <div className="flex items-center justify-between border-b border-[#192336] pb-3">
+            <div className="max-w-6xl mx-auto space-y-5">
+              {/* RAG Header & Controls */}
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-[#192336] pb-4">
                 <div>
                   <h3 className="text-base font-bold text-white flex items-center gap-2">
                     <Database size={18} className="text-cyan-400" />
                     Organizational RAG Incident Memories
                   </h3>
                   <p className="text-xs text-gray-400 font-mono mt-0.5">
-                    Continuous learning memory indexed with token similarity vectors.
+                    Continuously learning vector memory store indexed with TF-IDF token cosine & semantic keywords.
                   </p>
                 </div>
-                <span className="text-xs font-mono text-cyan-300 px-2.5 py-1 rounded bg-[#0d1829] border border-cyan-500/30">
-                  {ragIncidents.length} Stored Incidents
-                </span>
+
+                <div className="flex items-center gap-2.5">
+                  <button
+                    onClick={() => setShowAddMemoryModal(true)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-xs font-mono font-medium text-white shadow-[0_0_12px_rgba(168,85,247,0.3)] transition-all cursor-pointer"
+                  >
+                    <Plus size={14} />
+                    <span>Contribute Incident</span>
+                  </button>
+                  <button
+                    onClick={() => loadRagIncidents()}
+                    className="p-1.5 rounded-lg bg-[#111827] border border-[#1e293b] text-gray-400 hover:text-cyan-400 transition-colors cursor-pointer"
+                    title="Refresh Incidents"
+                  >
+                    <RefreshCw size={14} className={loadingRag ? "animate-spin" : ""} />
+                  </button>
+                  <span className="text-xs font-mono text-cyan-300 px-2.5 py-1.5 rounded-lg bg-[#0d1829] border border-cyan-500/30">
+                    {ragIncidents.length} Memories
+                  </span>
+                </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {ragIncidents.map((inc) => (
-                  <div key={inc.id} className="p-4 rounded-xl bg-[#0c121e] border border-[#1b263b] shadow-lg space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="font-mono text-xs font-bold text-cyan-300">{inc.id}</span>
-                      <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-purple-950/70 text-purple-300 border border-purple-500/30">
-                        {inc.category}
-                      </span>
-                    </div>
+              {/* Search & Category Filter Bar */}
+              <div className="flex flex-col md:flex-row items-center gap-3 bg-[#0a0f1d] p-3 rounded-xl border border-[#19243a]">
+                <div className="relative flex-1 w-full">
+                  <Search size={15} className="absolute left-3 top-2.5 text-gray-500" />
+                  <input
+                    type="text"
+                    value={ragSearchQuery}
+                    onChange={(e) => {
+                      setRagSearchQuery(e.target.value);
+                      handleSearchRag(e.target.value, ragCategoryFilter);
+                    }}
+                    placeholder="Search by error keywords (e.g., 'npm ERESOLVE', 'pytest assertion', 'Docker EACCES')..."
+                    className="w-full pl-9 pr-4 py-2 bg-[#060a12] border border-[#1f2b42] rounded-lg text-xs font-mono text-gray-200 placeholder-gray-500 focus:outline-none focus:border-cyan-500 transition-colors"
+                  />
+                </div>
 
-                    <div className="text-xs font-mono text-gray-300">
-                      <span className="text-gray-500">Failing Target: </span>
-                      {inc.failed_step}
-                    </div>
+                <div className="flex items-center gap-2 w-full md:w-auto">
+                  <Filter size={14} className="text-gray-500 shrink-0" />
+                  <select
+                    value={ragCategoryFilter}
+                    onChange={(e) => {
+                      setRagCategoryFilter(e.target.value);
+                      handleSearchRag(ragSearchQuery, e.target.value);
+                    }}
+                    className="bg-[#060a12] border border-[#1f2b42] rounded-lg px-3 py-2 text-xs font-mono text-gray-300 focus:outline-none focus:border-cyan-500"
+                  >
+                    <option value="all">All Categories</option>
+                    <option value="Dependency Failure">Dependency Failure</option>
+                    <option value="Test Failure">Test Failure</option>
+                    <option value="Build Failure">Build Failure</option>
+                    <option value="Infrastructure Failure">Infrastructure Failure</option>
+                    <option value="Non-zero Exit Code">Non-zero Exit Code</option>
+                  </select>
+                </div>
+              </div>
 
-                    {inc.plain_summary && (
-                      <p className="text-xs text-gray-300 font-sans leading-relaxed bg-[#111828] p-2.5 rounded-lg border border-[#1b253b]">
-                        {inc.plain_summary}
-                      </p>
-                    )}
+              {/* Incidents Grid */}
+              {loadingRag && ragIncidents.length === 0 ? (
+                <div className="flex items-center justify-center p-12 text-gray-500 font-mono text-xs">
+                  <RefreshCw size={16} className="animate-spin text-cyan-400 mr-2" />
+                  Searching organizational memory vectors...
+                </div>
+              ) : ragIncidents.length > 0 ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {ragIncidents.map((inc) => (
+                    <div
+                      key={inc.id}
+                      className="p-4 rounded-xl bg-[#0c121e] border border-[#1b263b] shadow-lg space-y-3 hover:border-cyan-500/40 transition-all group"
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono text-xs font-bold text-cyan-300">{inc.id}</span>
+                          {inc.similarity_score !== undefined && (
+                            <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-cyan-950/80 text-cyan-300 border border-cyan-500/30">
+                              {Math.round(inc.similarity_score * 100)}% Match
+                            </span>
+                          )}
+                        </div>
+                        <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-purple-950/70 text-purple-300 border border-purple-500/30">
+                          {inc.category}
+                        </span>
+                      </div>
 
-                    <div className="p-2.5 rounded bg-emerald-950/20 border border-emerald-500/30 text-xs font-mono text-emerald-200">
-                      <span className="text-emerald-400 font-semibold block mb-0.5">Saved Resolution:</span>
-                      {inc.resolution}
-                    </div>
+                      <div className="text-xs font-mono text-gray-300">
+                        <span className="text-gray-500">Failed Step / Target: </span>
+                        <code className="text-rose-300 bg-rose-950/30 px-1.5 py-0.5 rounded">{inc.failed_step}</code>
+                      </div>
 
-                    <div className="text-[10px] font-mono text-gray-500 flex items-center justify-between pt-1 border-t border-[#182233]">
-                      <span>Repo: {inc.repository}</span>
-                      <span>{new Date(inc.created_at).toLocaleDateString()}</span>
+                      {inc.plain_summary && (
+                        <p className="text-xs text-gray-300 font-sans leading-relaxed bg-[#111828] p-2.5 rounded-lg border border-[#1b253b]">
+                          {inc.plain_summary}
+                        </p>
+                      )}
+
+                      <div className="p-2.5 rounded bg-rose-950/20 border border-rose-500/20 text-xs font-mono text-rose-200">
+                        <span className="text-rose-400 font-semibold block mb-0.5">Identified Root Cause:</span>
+                        {inc.root_cause}
+                      </div>
+
+                      <div className="p-2.5 rounded bg-emerald-950/20 border border-emerald-500/30 text-xs font-mono text-emerald-200">
+                        <span className="text-emerald-400 font-semibold block mb-0.5">Organizational Resolution:</span>
+                        {inc.resolution}
+                      </div>
+
+                      <div className="text-[10px] font-mono text-gray-500 flex items-center justify-between pt-1 border-t border-[#182233]">
+                        <span>Repo: {inc.repository}</span>
+                        <span>{new Date(inc.created_at).toLocaleDateString()}</span>
+                      </div>
                     </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center p-12 text-center rounded-2xl border border-dashed border-[#1e293b] text-gray-500 space-y-2">
+                  <Database size={32} className="text-cyan-500/40" />
+                  <div className="text-xs font-mono text-gray-300">No matching incident memories found</div>
+                  <div className="text-[11px] font-mono text-gray-500">
+                    Try searching different keywords or click "Contribute Incident" to add a new organizational memory.
                   </div>
-                ))}
-              </div>
+                </div>
+              )}
+
+              {/* Add Manual Incident Memory Modal */}
+              {showAddMemoryModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+                  <div className="bg-[#0b101c] border border-[#1f2b42] rounded-2xl max-w-xl w-full p-6 shadow-2xl space-y-4">
+                    <div className="flex items-center justify-between border-b border-[#1b253a] pb-3">
+                      <div className="flex items-center gap-2">
+                        <Plus size={18} className="text-[#a855f7]" />
+                        <h4 className="text-sm font-bold text-white">Contribute Organizational Incident Memory</h4>
+                      </div>
+                      <button
+                        onClick={() => setShowAddMemoryModal(false)}
+                        className="text-gray-400 hover:text-white text-xs font-mono cursor-pointer"
+                      >
+                        ✕
+                      </button>
+                    </div>
+
+                    <form onSubmit={handleCreateMemorySubmit} className="space-y-3">
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="text-[10px] font-mono text-gray-400 block mb-1">Repository</label>
+                          <input
+                            type="text"
+                            required
+                            value={newMemory.repository}
+                            onChange={(e) => setNewMemory({ ...newMemory, repository: e.target.value })}
+                            className="w-full px-3 py-1.5 bg-[#060a12] border border-[#1f2b42] rounded-lg text-xs font-mono text-white focus:outline-none focus:border-cyan-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[10px] font-mono text-gray-400 block mb-1">Workflow Name</label>
+                          <input
+                            type="text"
+                            required
+                            value={newMemory.workflow_name}
+                            onChange={(e) => setNewMemory({ ...newMemory, workflow_name: e.target.value })}
+                            className="w-full px-3 py-1.5 bg-[#060a12] border border-[#1f2b42] rounded-lg text-xs font-mono text-white focus:outline-none focus:border-cyan-500"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="text-[10px] font-mono text-gray-400 block mb-1">Category</label>
+                          <select
+                            value={newMemory.category}
+                            onChange={(e) => setNewMemory({ ...newMemory, category: e.target.value })}
+                            className="w-full px-3 py-1.5 bg-[#060a12] border border-[#1f2b42] rounded-lg text-xs font-mono text-white focus:outline-none focus:border-cyan-500"
+                          >
+                            <option value="Dependency Failure">Dependency Failure</option>
+                            <option value="Test Failure">Test Failure</option>
+                            <option value="Build Failure">Build Failure</option>
+                            <option value="Infrastructure Failure">Infrastructure Failure</option>
+                            <option value="Non-zero Exit Code">Non-zero Exit Code</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="text-[10px] font-mono text-gray-400 block mb-1">Failed Step / Command</label>
+                          <input
+                            type="text"
+                            required
+                            value={newMemory.failed_step}
+                            onChange={(e) => setNewMemory({ ...newMemory, failed_step: e.target.value })}
+                            placeholder="e.g. npm ci, pytest -v"
+                            className="w-full px-3 py-1.5 bg-[#060a12] border border-[#1f2b42] rounded-lg text-xs font-mono text-white focus:outline-none focus:border-cyan-500"
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="text-[10px] font-mono text-gray-400 block mb-1">Error Signature / Log Excerpt</label>
+                        <textarea
+                          rows={2}
+                          value={newMemory.raw_log}
+                          onChange={(e) => setNewMemory({ ...newMemory, raw_log: e.target.value })}
+                          placeholder="Paste key error tokens (e.g. ERESOLVE unable to resolve dependency tree)"
+                          className="w-full px-3 py-1.5 bg-[#060a12] border border-[#1f2b42] rounded-lg text-xs font-mono text-white focus:outline-none focus:border-cyan-500"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-[10px] font-mono text-gray-400 block mb-1">Root Cause Explanation</label>
+                        <textarea
+                          rows={2}
+                          required
+                          value={newMemory.root_cause}
+                          onChange={(e) => setNewMemory({ ...newMemory, root_cause: e.target.value })}
+                          placeholder="Why did this failure occur?"
+                          className="w-full px-3 py-1.5 bg-[#060a12] border border-[#1f2b42] rounded-lg text-xs font-mono text-white focus:outline-none focus:border-cyan-500"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-[10px] font-mono text-gray-400 block mb-1">Verified Resolution / Auto-Fix Command</label>
+                        <textarea
+                          rows={2}
+                          required
+                          value={newMemory.resolution}
+                          onChange={(e) => setNewMemory({ ...newMemory, resolution: e.target.value })}
+                          placeholder="What step or code change resolves this failure?"
+                          className="w-full px-3 py-1.5 bg-[#060a12] border border-[#1f2b42] rounded-lg text-xs font-mono text-white focus:outline-none focus:border-cyan-500"
+                        />
+                      </div>
+
+                      <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#1b253a]">
+                        <button
+                          type="button"
+                          onClick={() => setShowAddMemoryModal(false)}
+                          className="px-3 py-1.5 rounded-lg bg-[#111827] text-xs font-mono text-gray-400 hover:text-white"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="submit"
+                          disabled={addingMemory}
+                          className="px-4 py-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-xs font-mono font-medium text-white shadow-[0_0_12px_rgba(6,182,212,0.4)] disabled:opacity-50"
+                        >
+                          {addingMemory ? "Indexing Vector..." : "Save to RAG Knowledge Base"}
+                        </button>
+                      </div>
+                    </form>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -862,9 +1168,11 @@ export default function Home() {
                 </div>
 
                 <div className="p-4 rounded-xl bg-[#0c121e] border border-[#1b263b] shadow-lg">
-                  <div className="text-xs font-mono text-gray-400 uppercase">RAG Hit Rate</div>
-                  <div className="text-2xl font-bold text-cyan-400 font-mono mt-1">85.4%</div>
-                  <div className="text-xs text-cyan-500 font-mono mt-0.5">Matches past incidents</div>
+                  <div className="text-xs font-mono text-gray-400 uppercase">Stored Memories</div>
+                  <div className="text-2xl font-bold text-cyan-400 font-mono mt-1">
+                    {ragAnalytics?.total_incidents ?? ragIncidents.length} Incidents
+                  </div>
+                  <div className="text-xs text-cyan-500 font-mono mt-0.5">Vector similarity store</div>
                 </div>
 
                 <div className="p-4 rounded-xl bg-[#0c121e] border border-[#1b263b] shadow-lg">
@@ -882,32 +1190,48 @@ export default function Home() {
 
               {/* Breakdown Category Cards */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="p-4 rounded-xl bg-[#0c121e] border border-[#1b263b] space-y-2">
-                  <span className="text-xs font-mono font-semibold text-rose-400">Top Failure Origins</span>
-                  <div className="space-y-1.5 text-xs font-mono">
-                    <div className="flex justify-between text-gray-300">
-                      <span>Configuration / YAML</span>
-                      <span className="text-rose-400">42%</span>
-                    </div>
-                    <div className="w-full bg-[#182233] h-1.5 rounded-full overflow-hidden">
-                      <div className="bg-rose-500 h-full w-[42%]" />
-                    </div>
-
-                    <div className="flex justify-between text-gray-300 pt-1">
-                      <span>Dependency & Lockfile</span>
-                      <span className="text-amber-400">31%</span>
-                    </div>
-                    <div className="w-full bg-[#182233] h-1.5 rounded-full overflow-hidden">
-                      <div className="bg-amber-500 h-full w-[31%]" />
-                    </div>
-
-                    <div className="flex justify-between text-gray-300 pt-1">
-                      <span>Test Assertions</span>
-                      <span className="text-cyan-400">27%</span>
-                    </div>
-                    <div className="w-full bg-[#182233] h-1.5 rounded-full overflow-hidden">
-                      <div className="bg-cyan-500 h-full w-[27%]" />
-                    </div>
+                <div className="p-4 rounded-xl bg-[#0c121e] border border-[#1b263b] space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-mono font-semibold text-rose-400">Incident Distribution</span>
+                    <span className="text-[10px] font-mono text-gray-500">Live RAG Data</span>
+                  </div>
+                  <div className="space-y-2.5 text-xs font-mono">
+                    {ragAnalytics?.category_distribution && ragAnalytics.category_distribution.length > 0 ? (
+                      ragAnalytics.category_distribution.map((cat: any, idx: number) => {
+                        const total = ragAnalytics.total_incidents || 1;
+                        const pct = Math.round((cat.count / total) * 100);
+                        const colors = ["bg-rose-500 text-rose-400", "bg-amber-500 text-amber-400", "bg-cyan-500 text-cyan-400", "bg-purple-500 text-purple-400"];
+                        const c = colors[idx % colors.length];
+                        return (
+                          <div key={cat.category} className="space-y-1">
+                            <div className="flex justify-between text-gray-300">
+                              <span>{cat.category}</span>
+                              <span className={c.split(" ")[1]}>{cat.count} ({pct}%)</span>
+                            </div>
+                            <div className="w-full bg-[#182233] h-1.5 rounded-full overflow-hidden">
+                              <div className={`${c.split(" ")[0]} h-full`} style={{ width: `${pct}%` }} />
+                            </div>
+                          </div>
+                        );
+                      })
+                    ) : (
+                      <>
+                        <div className="flex justify-between text-gray-300">
+                          <span>Dependency Failure</span>
+                          <span className="text-amber-400">50%</span>
+                        </div>
+                        <div className="w-full bg-[#182233] h-1.5 rounded-full overflow-hidden">
+                          <div className="bg-amber-500 h-full w-[50%]" />
+                        </div>
+                        <div className="flex justify-between text-gray-300 pt-1">
+                          <span>Test Failure</span>
+                          <span className="text-cyan-400">50%</span>
+                        </div>
+                        <div className="w-full bg-[#182233] h-1.5 rounded-full overflow-hidden">
+                          <div className="bg-cyan-500 h-full w-[50%]" />
+                        </div>
+                      </>
+                    )}
                   </div>
                 </div>
 
@@ -917,6 +1241,10 @@ export default function Home() {
                     When pipeline failures occur across GitHub Actions, the assistant vectors error traces into <code className="text-cyan-300">incidents_kb.db</code>. 
                     Subsequent pipeline runs retrieve these past organizational postmortems to resolve recurring build errors without human intervention.
                   </p>
+                  <div className="mt-3 pt-3 border-t border-[#182338] flex items-center justify-between text-xs font-mono text-gray-400">
+                    <span>Engine: TF-IDF Cosine & Semantic Keyword Matcher</span>
+                    <span className="text-emerald-400">Status: Auto-Indexing Active</span>
+                  </div>
                 </div>
               </div>
             </div>
