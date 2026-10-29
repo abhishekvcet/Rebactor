@@ -679,27 +679,45 @@ class ManualIncidentCreate(BaseModel):
 
 
 @app.get("/rag/incidents")
-async def get_rag_knowledge_base():
-    """Retrieve indexed organizational incidents stored in the RAG knowledge base."""
+async def get_rag_knowledge_base(repository: Optional[str] = None):
+    """Retrieve indexed organizational incidents stored in the RAG knowledge base, optionally filtered by repository."""
     from rag_service import get_db_connection
     conn = get_db_connection()
-    rows = conn.execute("""
-        SELECT id, repository, workflow_name, category, failed_step, plain_summary, 
-               root_cause, resolution, created_at, status, 
-               COALESCE(resolution_time_minutes, 4.5) as resolution_time_minutes,
-               COALESCE(occurrence_count, 1) as occurrence_count,
-               updated_at
-        FROM incidents 
-        ORDER BY created_at DESC LIMIT 50
-    """).fetchall()
+    if repository and repository != "all":
+        rows = conn.execute("""
+            SELECT id, repository, workflow_name, category, failed_step, plain_summary, 
+                   root_cause, resolution, created_at, status, 
+                   COALESCE(resolution_time_minutes, 4.5) as resolution_time_minutes,
+                   COALESCE(occurrence_count, 1) as occurrence_count,
+                   updated_at
+            FROM incidents 
+            WHERE repository = ?
+            ORDER BY created_at DESC LIMIT 50
+        """, (repository,)).fetchall()
+    else:
+        rows = conn.execute("""
+            SELECT id, repository, workflow_name, category, failed_step, plain_summary, 
+                   root_cause, resolution, created_at, status, 
+                   COALESCE(resolution_time_minutes, 4.5) as resolution_time_minutes,
+                   COALESCE(occurrence_count, 1) as occurrence_count,
+                   updated_at
+            FROM incidents 
+            ORDER BY created_at DESC LIMIT 50
+        """).fetchall()
     return {"incidents": [dict(r) for r in rows]}
 
 
 @app.get("/rag/search")
-async def search_rag_incidents(query: str, category: Optional[str] = None):
+async def search_rag_incidents(query: str, category: Optional[str] = None, repository: Optional[str] = None):
     """Search knowledge base using hybrid vector token cosine & keyword relevance."""
     from rag_service import search_similar_incidents
-    results = search_similar_incidents(raw_log=query, min_similarity=0.25, top_k=6, category_filter=category)
+    results = search_similar_incidents(
+        raw_log=query,
+        min_similarity=0.25,
+        top_k=6,
+        category_filter=category,
+        repository_filter=repository,
+    )
     return {"query": query, "matches": [r.model_dump() for r in results]}
 
 

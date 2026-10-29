@@ -69,17 +69,24 @@ export async function fetchRecentWebhookEvents() {
   return res.json();
 }
 
-export async function fetchRagIncidents() {
-  const res = await fetch(`${API_URL}/rag/incidents`);
+export async function fetchRagIncidents(repository?: string) {
+  const url = new URL(`${API_URL}/rag/incidents`);
+  if (repository && repository !== "all") {
+    url.searchParams.set("repository", repository);
+  }
+  const res = await fetch(url.toString());
   if (!res.ok) throw new Error("Failed to load RAG incidents");
   return res.json();
 }
 
-export async function searchRagIncidents(query: string, category?: string) {
+export async function searchRagIncidents(query: string, category?: string, repository?: string) {
   const url = new URL(`${API_URL}/rag/search`);
   url.searchParams.set("query", query);
   if (category && category !== "all") {
     url.searchParams.set("category", category);
+  }
+  if (repository && repository !== "all") {
+    url.searchParams.set("repository", repository);
   }
   const res = await fetch(url.toString());
   if (!res.ok) throw new Error("Failed to search RAG knowledge base");

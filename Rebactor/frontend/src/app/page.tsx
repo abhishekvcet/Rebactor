@@ -82,6 +82,7 @@ export default function Home() {
   const [loadingRag, setLoadingRag] = useState<boolean>(false);
   const [ragSearchQuery, setRagSearchQuery] = useState<string>("");
   const [ragCategoryFilter, setRagCategoryFilter] = useState<string>("all");
+  const [ragRepoFilter, setRagRepoFilter] = useState<string>("all");
   const [showAddMemoryModal, setShowAddMemoryModal] = useState<boolean>(false);
   const [addingMemory, setAddingMemory] = useState<boolean>(false);
   const [newMemory, setNewMemory] = useState({
@@ -183,10 +184,10 @@ export default function Home() {
     }
   };
 
-  const loadRagIncidents = async () => {
+  const loadRagIncidents = async (repoFilter: string = ragRepoFilter) => {
     setLoadingRag(true);
     try {
-      const data = await fetchRagIncidents();
+      const data = await fetchRagIncidents(repoFilter);
       if (data.incidents) {
         setRagIncidents(data.incidents);
       }
@@ -207,16 +208,21 @@ export default function Home() {
     setTimeout(() => setCopiedId(null), 2000);
   };
 
-  const handleSearchRag = async (queryText: string, category: string, sort: "newest" | "oldest" | "similarity" = ragSortOrder) => {
-    if (!queryText.trim() && category === "all") {
-      loadRagIncidents();
+  const handleSearchRag = async (
+    queryText: string,
+    category: string,
+    sort: "newest" | "oldest" | "similarity" = ragSortOrder,
+    repo: string = ragRepoFilter
+  ) => {
+    if (!queryText.trim() && category === "all" && repo === "all") {
+      loadRagIncidents("all");
       return;
     }
     setLoadingRag(true);
     try {
       let items: any[] = [];
       if (queryText.trim()) {
-        const data = await searchRagIncidents(queryText, category);
+        const data = await searchRagIncidents(queryText, category, repo);
         if (data.matches) {
           items = data.matches.map((m: any) => ({
             id: m.incident_id,
@@ -231,7 +237,7 @@ export default function Home() {
           }));
         }
       } else {
-        const data = await fetchRagIncidents();
+        const data = await fetchRagIncidents(repo);
         items = (data.incidents || []).filter((inc: any) => category === "all" || inc.category === category);
       }
 
@@ -1106,6 +1112,34 @@ export default function Home() {
                 </div>
               </div>
 
+              {/* Repository Workspace Tabs */}
+              <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
+                <span className="text-xs font-mono text-gray-400 flex items-center gap-1.5 shrink-0 mr-1">
+                  <FolderGit2 size={13} className="text-[#a855f7]" />
+                  <span>Workspace:</span>
+                </span>
+                {[
+                  { label: "All Repositories", value: "all" },
+                  { label: "abhishekvcet/Rebactor", value: "abhishekvcet/Rebactor" },
+                  { label: "Abhisheksingh2004/github-action5", value: "Abhisheksingh2004/github-action5" },
+                ].map((ws) => (
+                  <button
+                    key={ws.value}
+                    onClick={() => {
+                      setRagRepoFilter(ws.value);
+                      handleSearchRag(ragSearchQuery, ragCategoryFilter, ragSortOrder, ws.value);
+                    }}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-mono font-medium transition-all shrink-0 cursor-pointer ${
+                      ragRepoFilter === ws.value
+                        ? "bg-[#6366f1] text-white shadow-[0_0_12px_rgba(99,102,241,0.4)]"
+                        : "bg-[#0b101c] text-gray-400 hover:text-white hover:bg-[#131b2c] border border-[#1a2538]"
+                    }`}
+                  >
+                    {ws.label}
+                  </button>
+                ))}
+              </div>
+
               {/* Search & Category Filter Bar */}
               <div className="flex flex-col md:flex-row items-center gap-3 bg-[#0a0f1d] p-3 rounded-xl border border-[#19243a]">
                 <div className="relative flex-1 w-full">
@@ -1115,7 +1149,7 @@ export default function Home() {
                     value={ragSearchQuery}
                     onChange={(e) => {
                       setRagSearchQuery(e.target.value);
-                      handleSearchRag(e.target.value, ragCategoryFilter, ragSortOrder);
+                      handleSearchRag(e.target.value, ragCategoryFilter, ragSortOrder, ragRepoFilter);
                     }}
                     placeholder="Search by error keywords (e.g., 'npm ERESOLVE', 'pytest assertion', 'Docker EACCES')..."
                     className="w-full pl-9 pr-4 py-2 bg-[#060a12] border border-[#1f2b42] rounded-lg text-xs font-mono text-gray-200 placeholder-gray-500 focus:outline-none focus:border-cyan-500 transition-colors"
@@ -1128,7 +1162,7 @@ export default function Home() {
                     value={ragCategoryFilter}
                     onChange={(e) => {
                       setRagCategoryFilter(e.target.value);
-                      handleSearchRag(ragSearchQuery, e.target.value, ragSortOrder);
+                      handleSearchRag(ragSearchQuery, e.target.value, ragSortOrder, ragRepoFilter);
                     }}
                     className="bg-[#060a12] border border-[#1f2b42] rounded-lg px-3 py-2 text-xs font-mono text-gray-300 focus:outline-none focus:border-cyan-500"
                   >
@@ -1146,7 +1180,7 @@ export default function Home() {
                     onChange={(e) => {
                       const newSort = e.target.value as "newest" | "oldest" | "similarity";
                       setRagSortOrder(newSort);
-                      handleSearchRag(ragSearchQuery, ragCategoryFilter, newSort);
+                      handleSearchRag(ragSearchQuery, ragCategoryFilter, newSort, ragRepoFilter);
                     }}
                     className="bg-[#060a12] border border-[#1f2b42] rounded-lg px-3 py-2 text-xs font-mono text-gray-300 focus:outline-none focus:border-cyan-500"
                   >
@@ -1184,6 +1218,11 @@ export default function Home() {
                             <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-purple-950/70 text-purple-300 border border-purple-500/30">
                               {inc.category}
                             </span>
+                            {inc.occurrence_count && inc.occurrence_count > 1 && (
+                              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/40 font-semibold flex items-center gap-1">
+                                <span>Seen {inc.occurrence_count}x</span>
+                              </span>
+                            )}
                             <span className={`text-[10px] font-mono px-2 py-0.5 rounded border ${
                               inc.status === "investigating"
                                 ? "bg-amber-500/10 text-amber-300 border-amber-500/30"

@@ -185,6 +185,7 @@ def search_similar_incidents(
     min_similarity: float = 0.35,
     top_k: int = 4,
     category_filter: Optional[str] = None,
+    repository_filter: Optional[str] = None,
 ) -> List[RetrievedIncident]:
     """Retrieve historical incidents from the vector knowledge base matching the failure log with hybrid cosine & keyword matching."""
     query_tokens = tokenize_error_log(raw_log)
@@ -192,13 +193,19 @@ def search_similar_incidents(
         return []
 
     conn = get_db_connection()
-    if category_filter:
-        rows = conn.execute(
-            "SELECT * FROM incidents WHERE category = ? ORDER BY created_at DESC LIMIT 100",
-            (category_filter,)
-        ).fetchall()
-    else:
-        rows = conn.execute("SELECT * FROM incidents ORDER BY created_at DESC LIMIT 100").fetchall()
+    clauses = []
+    params = []
+
+    if category_filter and category_filter != "all":
+        clauses.append("category = ?")
+        params.append(category_filter)
+
+    if repository_filter and repository_filter != "all":
+        clauses.append("repository = ?")
+        params.append(repository_filter)
+
+    where_sql = ("WHERE " + " AND ".join(clauses)) if clauses else ""
+    rows = conn.execute(f"SELECT * FROM incidents {where_sql} ORDER BY created_at DESC LIMIT 100", tuple(params)).fetchall()
 
     results: List[RetrievedIncident] = []
     query_text_lower = raw_log.lower()
