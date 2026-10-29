@@ -511,36 +511,7 @@ export default function Home() {
             </div>
           </div>
 
-          {/* AI & RAG Engine Configuration Section */}
-          <div className="p-3 rounded-xl bg-[#0c121e] border border-[#1a2538] space-y-2.5">
-            <div className="flex items-center justify-between text-xs font-mono">
-              <span className="text-gray-400 uppercase text-[10px] font-bold tracking-wider flex items-center gap-1.5">
-                <Sparkles size={12} className="text-[#a855f7]" />
-                Engine Config
-              </span>
-              <span className="text-[10px] text-emerald-400 bg-emerald-950/60 px-1.5 py-0.5 rounded border border-emerald-500/20">
-                Active
-              </span>
-            </div>
 
-            <div className="space-y-1.5 text-xs font-mono">
-              <div className="flex items-center justify-between p-2 rounded-lg bg-[#070b13] border border-[#162030]">
-                <span className="text-gray-400 text-[11px] flex items-center gap-1.5">
-                  <Cpu size={12} className="text-[#a855f7]" />
-                  LLM Model
-                </span>
-                <span className="text-white text-[11px] font-semibold">qwen/qwen3.8-27b</span>
-              </div>
-
-              <div className="flex items-center justify-between p-2 rounded-lg bg-[#070b13] border border-[#162030]">
-                <span className="text-gray-400 text-[11px] flex items-center gap-1.5">
-                  <Database size={12} className="text-cyan-400" />
-                  RAG Vector Store
-                </span>
-                <span className="text-cyan-300 text-[11px] font-semibold">{ragIncidents.length} Memories</span>
-              </div>
-            </div>
-          </div>
 
           {/* Service Status Bar */}
           <div className="p-2.5 rounded-lg bg-[#0e1422] border border-[#1b263b] flex items-center justify-between text-xs font-mono">
