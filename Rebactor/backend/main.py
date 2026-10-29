@@ -77,10 +77,12 @@ class ParsedLogSummary(BaseModel):
     job: str
     failed_step: str
     exit_code: Optional[int] = None
+    plain_summary: Optional[str] = None
     root_cause: str
     category: str
     confidence: float
     auto_fix: str
+    engine: Optional[str] = "LangChain + LLM"
 
 
 class FailedJobLog(BaseModel):
@@ -160,79 +162,23 @@ def verify_github_signature(payload_body: bytes, signature_header: Optional[str]
     return hmac.compare_digest(expected_sig, signature_header)
 
 
-def parse_log_summary(raw_text: str, job_name: str = "unknown-job") -> ParsedLogSummary:
-    """Analyze and generate structured diagnostic summary from CI log output."""
-    if not raw_text:
-        return ParsedLogSummary(
-            status="failed",
-            job=job_name,
-            failed_step=job_name,
-            exit_code=None,
-            root_cause="No log content available to diagnose.",
-            category="Unknown",
-            confidence=0.5,
-            auto_fix="Check if the runner produced logs before aborting.",
-        )
+from llm_service import generate_llm_diagnosis
 
-    # Clean ANSI codes and normalise
-    text = re.sub(r"\x1b\[[0-9;]*[a-zA-Z]", "", raw_text)
-    text = text.replace("\r\n", "\n").replace("\r", "\n")
-    lines = [line.strip() for line in text.split("\n") if line.strip()]
 
-    failed_step = job_name or "unknown-job"
-    exit_code = None
-    root_cause = "Workflow failed during step execution."
-    category = "Workflow Failure"
-    auto_fix = "Inspect the failed command output and dependencies before re-running."
-
-    # Look for exit code patterns
-    exit_match = re.search(r"(?:exit(?: status|\s+code)?|process exited with code|status)\s*[:=]?\s*(\d+)", text, re.I)
-    if exit_match:
-        try:
-            exit_code = int(exit_match.group(1))
-        except ValueError:
-            pass
-
-    # Look for run command
-    for line in reversed(lines):
-        if re.search(r"^(##\[group\]|##\[command\]|Run\s+)", line, re.I):
-            clean_cmd = re.sub(r"^(##\[group\]|##\[command\]|Run\s+)", "", line, flags=re.I).strip()
-            if clean_cmd:
-                failed_step = clean_cmd
-                break
-
-    # Look for primary error line
-    for line in lines:
-        if re.search(r"##\[error\]|error:|fatal:|command failed|failed with exit code", line, re.I):
-            detail = re.sub(r"^(##\[error\]|Error:\s*)", "", line, flags=re.I).strip()
-            if detail:
-                failed_step = detail[:80] + ("..." if len(detail) > 80 else "")
-                root_cause = detail
-                break
-
-    if exit_code is not None:
-        root_cause = f"Process terminated with non-zero exit status code ({exit_code})."
-        category = "Non-zero Exit Code"
-        auto_fix = "Fix the command or syntax error triggering the exit code and re-run."
-
-    if re.search(r"npm|yarn|pnpm|pip|poetry|pipenv|requirements\.txt|package\.json|go test|mvn|gradle", text, re.I):
-        category = "Dependency or Build Script Failure"
-        auto_fix = "Verify lockfile consistency, package versions, and install dependencies locally to reproduce."
-    elif re.search(r"docker|permission denied|no such file or directory|syntax error|undefined variable|not found", text, re.I):
-        category = "Environment or Configuration Failure"
-        auto_fix = "Verify directory paths, environment secrets, and container image compatibility."
-
-    confidence = 1.0 if (exit_code is not None or "##[error]" in text) else 0.85
-
+async def parse_log_summary(raw_text: str, job_name: str = "unknown-job") -> ParsedLogSummary:
+    """Analyze and generate structured LLM diagnostic summary from CI log output."""
+    llm_res = await generate_llm_diagnosis(raw_text, job_name)
     return ParsedLogSummary(
         status="failed",
         job=job_name,
-        failed_step=failed_step,
-        exit_code=exit_code,
-        root_cause=root_cause,
-        category=category,
-        confidence=confidence,
-        auto_fix=auto_fix,
+        failed_step=llm_res.failed_step,
+        exit_code=llm_res.exit_code,
+        plain_summary=llm_res.plain_summary,
+        root_cause=llm_res.root_cause,
+        category=llm_res.category,
+        confidence=llm_res.confidence,
+        auto_fix=llm_res.auto_fix,
+        engine=llm_res.engine,
     )
 
 
@@ -271,7 +217,7 @@ async def process_failed_run_background(owner: str, repo: str, run_id: int, run_
                             logs_resp = await client.get(logs_url, headers=headers, follow_redirects=True)
                             raw_log = logs_resp.text if logs_resp.status_code == 200 else f"Failed to fetch job log (HTTP {logs_resp.status_code})"
 
-                            diagnostic = parse_log_summary(raw_log, job_name)
+                            diagnostic = await parse_log_summary(raw_log, job_name)
                             diagnosed_jobs.append({
                                 "job_id": job_id,
                                 "job_name": job_name,
@@ -284,7 +230,7 @@ async def process_failed_run_background(owner: str, repo: str, run_id: int, run_
 
         # Fallback for test simulations or runs where jobs are not directly reachable
         if not diagnosed_jobs:
-            mock_diagnostic = parse_log_summary(
+            mock_diagnostic = await parse_log_summary(
                 "##[error] Process completed with exit code 1.\nRun npm test\nFAIL src/test/pipeline.test.ts\nError: Command failed with exit code 1",
                 "build-and-test",
             )
@@ -608,8 +554,8 @@ async def get_failed_logs(
                         if s.get("conclusion") == "failure"
                     ]
 
-                    # Parse diagnostic summary
-                    diagnostic = parse_log_summary(raw_log, job_name)
+                    # Parse diagnostic summary using LLM reasoning
+                    diagnostic = await parse_log_summary(raw_log, job_name)
 
                     extracted_results.append(
                         FailedJobLog(

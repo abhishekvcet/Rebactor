@@ -21,10 +21,12 @@ export interface ParsedLogSummary {
   job: string;
   failed_step: string;
   exit_code?: number | null;
+  plain_summary?: string;
   root_cause: string;
   category: string;
   confidence: number;
   auto_fix: string;
+  engine?: string;
 }
 
 export interface FailedJobLog {

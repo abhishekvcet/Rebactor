@@ -186,6 +186,21 @@ export function LogCard({ log }: LogCardProps) {
                 </div>
               </div>
 
+              {/* Plain English Summary Box if present */}
+              {summary.plain_summary && (
+                <div className="p-3.5 rounded-lg bg-[#141f33] border border-[#233555] flex items-start gap-3">
+                  <Sparkles size={16} className="text-[#00f5d4] shrink-0 mt-0.5" />
+                  <div>
+                    <div className="text-[11px] font-mono uppercase text-[#00f5d4] font-semibold mb-0.5">
+                      Plain-Language Summary ({summary.engine || "LLM Reasoning"})
+                    </div>
+                    <p className="text-sm text-gray-200 leading-relaxed font-sans">
+                      {summary.plain_summary}
+                    </p>
+                  </div>
+                </div>
+              )}
+
               {/* Root Cause Box */}
               <div className="p-4 rounded-lg bg-rose-950/20 border border-rose-500/30">
                 <div className="flex items-center gap-2 text-rose-400 text-xs font-mono font-semibold uppercase mb-1.5">
