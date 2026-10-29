@@ -39,7 +39,21 @@ import {
 } from "lucide-react";
 
 export default function Home() {
-  const [navSection, setNavSection] = useState<"ci-cd" | "webhooks" | "rag-kb" | "analytics">("ci-cd");
+  // Lazy state initializer directly reads URL hash or localStorage synchronously before first render
+  const [navSection, setNavSection] = useState<"ci-cd" | "webhooks" | "rag-kb" | "analytics">(() => {
+    if (typeof window !== "undefined") {
+      const hash = window.location.hash.replace("#", "") as "ci-cd" | "webhooks" | "rag-kb" | "analytics";
+      const savedSection = localStorage.getItem("datadog_nav_section") as "ci-cd" | "webhooks" | "rag-kb" | "analytics";
+      if (hash && ["ci-cd", "webhooks", "rag-kb", "analytics"].includes(hash)) {
+        return hash;
+      }
+      if (savedSection && ["ci-cd", "webhooks", "rag-kb", "analytics"].includes(savedSection)) {
+        return savedSection;
+      }
+    }
+    return "ci-cd";
+  });
+
   const [repos, setRepos] = useState<RepoItem[]>([]);
   const [selectedRepoStr, setSelectedRepoStr] = useState<string>("");
   const [owner, setOwner] = useState<string>("");
@@ -64,17 +78,16 @@ export default function Home() {
   const [ragIncidents, setRagIncidents] = useState<any[]>([]);
   const [loadingRag, setLoadingRag] = useState<boolean>(false);
 
-  // Restore navigation section from URL hash or localStorage on mount
+  // Sync hash changes if user uses browser Back/Forward buttons
   useEffect(() => {
-    if (typeof window !== "undefined") {
+    const handleHashChange = () => {
       const hash = window.location.hash.replace("#", "") as "ci-cd" | "webhooks" | "rag-kb" | "analytics";
-      const savedSection = localStorage.getItem("datadog_nav_section") as "ci-cd" | "webhooks" | "rag-kb" | "analytics";
-      const targetSection = (hash && ["ci-cd", "webhooks", "rag-kb", "analytics"].includes(hash))
-        ? hash
-        : (savedSection && ["ci-cd", "webhooks", "rag-kb", "analytics"].includes(savedSection) ? savedSection : "ci-cd");
-
-      setNavSection(targetSection);
-    }
+      if (hash && ["ci-cd", "webhooks", "rag-kb", "analytics"].includes(hash)) {
+        setNavSection(hash);
+      }
+    };
+    window.addEventListener("hashchange", handleHashChange);
+    return () => window.removeEventListener("hashchange", handleHashChange);
   }, []);
 
   const handleNavChange = (section: "ci-cd" | "webhooks" | "rag-kb" | "analytics") => {
