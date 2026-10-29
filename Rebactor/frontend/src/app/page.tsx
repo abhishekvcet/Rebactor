@@ -55,7 +55,7 @@ import {
 
 export default function Home() {
   const [isMounted, setIsMounted] = useState<boolean>(false);
-  const [navSection, setNavSection] = useState<"ci-cd" | "webhooks" | "rag-kb" | "analytics">("ci-cd");
+  const [navSection, setNavSection] = useState<"ci-cd" | "webhooks" | "rag-kb" | "analytics" | "settings">("ci-cd");
 
   const [repos, setRepos] = useState<RepoItem[]>([]);
   const [selectedRepoStr, setSelectedRepoStr] = useState<string>("");
@@ -106,11 +106,11 @@ export default function Home() {
   useEffect(() => {
     setIsMounted(true);
     if (typeof window !== "undefined") {
-      const hash = window.location.hash.replace("#", "") as "ci-cd" | "webhooks" | "rag-kb" | "analytics";
-      const savedSection = localStorage.getItem("rebactor_nav_section") as "ci-cd" | "webhooks" | "rag-kb" | "analytics";
-      const target = (hash && ["ci-cd", "webhooks", "rag-kb", "analytics"].includes(hash))
+      const hash = window.location.hash.replace("#", "") as "ci-cd" | "webhooks" | "rag-kb" | "analytics" | "settings";
+      const savedSection = localStorage.getItem("rebactor_nav_section") as "ci-cd" | "webhooks" | "rag-kb" | "analytics" | "settings";
+      const target = (hash && ["ci-cd", "webhooks", "rag-kb", "analytics", "settings"].includes(hash))
         ? hash
-        : (savedSection && ["ci-cd", "webhooks", "rag-kb", "analytics"].includes(savedSection) ? savedSection : "ci-cd");
+        : (savedSection && ["ci-cd", "webhooks", "rag-kb", "analytics", "settings"].includes(savedSection) ? savedSection : "ci-cd");
       setNavSection(target);
     }
   }, []);
@@ -118,8 +118,8 @@ export default function Home() {
   // Sync hash changes if user uses browser Back/Forward buttons
   useEffect(() => {
     const handleHashChange = () => {
-      const hash = window.location.hash.replace("#", "") as "ci-cd" | "webhooks" | "rag-kb" | "analytics";
-      if (hash && ["ci-cd", "webhooks", "rag-kb", "analytics"].includes(hash)) {
+      const hash = window.location.hash.replace("#", "") as "ci-cd" | "webhooks" | "rag-kb" | "analytics" | "settings";
+      if (hash && ["ci-cd", "webhooks", "rag-kb", "analytics", "settings"].includes(hash)) {
         setNavSection(hash);
       }
     };
@@ -127,7 +127,7 @@ export default function Home() {
     return () => window.removeEventListener("hashchange", handleHashChange);
   }, []);
 
-  const handleNavChange = (section: "ci-cd" | "webhooks" | "rag-kb" | "analytics") => {
+  const handleNavChange = (section: "ci-cd" | "webhooks" | "rag-kb" | "analytics" | "settings") => {
     setNavSection(section);
     if (typeof window !== "undefined") {
       localStorage.setItem("rebactor_nav_section", section);
@@ -454,6 +454,18 @@ export default function Home() {
             >
               <BarChart3 size={20} />
             </button>
+
+            <button
+              onClick={() => handleNavChange("settings")}
+              title="AI Engine & Webhook Configuration"
+              className={`w-11 h-11 rounded-xl flex items-center justify-center transition-all ${
+                navSection === "settings"
+                  ? "bg-[#6366f1] text-white shadow-[0_0_12px_rgba(99,102,241,0.5)]"
+                  : "text-gray-400 hover:text-white hover:bg-[#131b2c]"
+              }`}
+            >
+              <Settings size={20} />
+            </button>
           </div>
         </div>
 
@@ -483,17 +495,50 @@ export default function Home() {
                 {navSection === "webhooks" && "Real-Time Ingestion"}
                 {navSection === "rag-kb" && "Org Knowledge Base"}
                 {navSection === "analytics" && "MTTR Metrics"}
+                {navSection === "settings" && "System Settings"}
               </span>
               <h2 className="text-base font-bold text-white mt-0.5">
                 {navSection === "ci-cd" && "Workflow Extractor"}
                 {navSection === "webhooks" && "Event Stream"}
                 {navSection === "rag-kb" && "RAG Incident Memory"}
                 {navSection === "analytics" && "Pipeline Insights"}
+                {navSection === "settings" && "Engine Configuration"}
               </h2>
             </div>
             <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-[#101827] border border-[#1e2b42] text-[10px] font-mono text-cyan-300">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
               Live
+            </div>
+          </div>
+
+          {/* AI & RAG Engine Configuration Section */}
+          <div className="p-3 rounded-xl bg-[#0c121e] border border-[#1a2538] space-y-2.5">
+            <div className="flex items-center justify-between text-xs font-mono">
+              <span className="text-gray-400 uppercase text-[10px] font-bold tracking-wider flex items-center gap-1.5">
+                <Sparkles size={12} className="text-[#a855f7]" />
+                Engine Config
+              </span>
+              <span className="text-[10px] text-emerald-400 bg-emerald-950/60 px-1.5 py-0.5 rounded border border-emerald-500/20">
+                Active
+              </span>
+            </div>
+
+            <div className="space-y-1.5 text-xs font-mono">
+              <div className="flex items-center justify-between p-2 rounded-lg bg-[#070b13] border border-[#162030]">
+                <span className="text-gray-400 text-[11px] flex items-center gap-1.5">
+                  <Cpu size={12} className="text-[#a855f7]" />
+                  LLM Model
+                </span>
+                <span className="text-white text-[11px] font-semibold">qwen/qwen3.8-27b</span>
+              </div>
+
+              <div className="flex items-center justify-between p-2 rounded-lg bg-[#070b13] border border-[#162030]">
+                <span className="text-gray-400 text-[11px] flex items-center gap-1.5">
+                  <Database size={12} className="text-cyan-400" />
+                  RAG Vector Store
+                </span>
+                <span className="text-cyan-300 text-[11px] font-semibold">{ragIncidents.length} Memories</span>
+              </div>
             </div>
           </div>
 
@@ -735,6 +780,40 @@ export default function Home() {
             </div>
           )}
 
+          {/* VIEW: SETTINGS & CONFIGURATION OVERVIEW */}
+          {navSection === "settings" && (
+            <div className="space-y-3.5">
+              <div className="p-3 rounded-xl bg-[#0c121e] border border-[#1a2538] space-y-2">
+                <span className="text-[10px] font-mono uppercase font-bold text-cyan-400">Environment Specs</span>
+                <p className="text-[11px] text-gray-400 font-mono leading-tight">
+                  Core runtime parameters, model inference routing, and storage adapters.
+                </p>
+                <div className="text-xs font-mono space-y-1 text-gray-300">
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">FastAPI Port:</span>
+                    <span>8001</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Next.js Port:</span>
+                    <span>3000</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Vector Store:</span>
+                    <span className="text-cyan-400">SQLite + Cosine</span>
+                  </div>
+                </div>
+              </div>
+
+              <button
+                onClick={() => checkHealth()}
+                className="w-full py-2 px-3 rounded-lg bg-[#111827] hover:bg-[#1a2333] border border-[#1e2b40] text-xs font-mono text-gray-300 flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+              >
+                <RefreshCw size={12} />
+                <span>Test Service Health</span>
+              </button>
+            </div>
+          )}
+
           {errorMsg && (
             <div className="p-2.5 rounded-lg bg-rose-950/30 border border-rose-500/30 text-rose-300 text-xs font-mono flex items-start gap-2">
               <AlertCircle size={14} className="shrink-0 mt-0.5 text-rose-400" />
@@ -793,15 +872,9 @@ export default function Home() {
             )}
           </div>
 
-          <div className="flex items-center gap-3 text-xs font-mono">
-            <span className="text-gray-400 flex items-center gap-1.5">
-              <Sparkles size={13} className="text-[#a855f7]" />
-              LLM: <strong className="text-white">qwen/qwen3.8-27b</strong>
-            </span>
-            <span className="text-gray-600">•</span>
-            <span className="text-gray-400 flex items-center gap-1.5">
-              <Database size={13} className="text-cyan-400" />
-              RAG: <strong className="text-cyan-300">{ragIncidents.length} Memories</strong>
+          <div className="flex items-center gap-2 text-xs font-mono">
+            <span className="text-[11px] text-gray-500 font-mono">
+              Rebactor Workspace
             </span>
           </div>
         </div>
@@ -1654,6 +1727,109 @@ export default function Home() {
                   <div className="mt-3 pt-3 border-t border-[#182338] flex items-center justify-between text-xs font-mono text-gray-400">
                     <span>Engine: TF-IDF Cosine & Semantic Keyword Matcher</span>
                     <span className="text-emerald-400">Status: Auto-Indexing Active</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* VIEW: SETTINGS & CONFIGURATION PAGE */}
+          {navSection === "settings" && (
+            <div className="max-w-4xl mx-auto space-y-6">
+              {/* Header */}
+              <div className="border-b border-[#192336] pb-4">
+                <h3 className="text-base font-bold text-white flex items-center gap-2">
+                  <Settings size={18} className="text-[#a855f7]" />
+                  System & Engine Configuration
+                </h3>
+                <p className="text-xs text-gray-400 font-mono mt-0.5">
+                  Runtime architecture, inference model specifications, and organizational knowledge vector store.
+                </p>
+              </div>
+
+              {/* Grid Cards */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* LLM Card */}
+                <div className="p-5 rounded-2xl bg-[#0c121e] border border-[#1b263b] shadow-xl space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-mono font-bold uppercase tracking-wider text-purple-400 flex items-center gap-2">
+                      <Sparkles size={15} />
+                      AI Diagnostic Engine
+                    </span>
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-purple-950/70 text-purple-300 border border-purple-500/30">
+                      Active
+                    </span>
+                  </div>
+                  <div className="space-y-2 text-xs font-mono">
+                    <div className="flex justify-between p-2.5 rounded-lg bg-[#070b13] border border-[#162030]">
+                      <span className="text-gray-400">Primary Model:</span>
+                      <span className="text-white font-semibold">qwen/qwen3.8-27b</span>
+                    </div>
+                    <div className="flex justify-between p-2.5 rounded-lg bg-[#070b13] border border-[#162030]">
+                      <span className="text-gray-400">Inference Provider:</span>
+                      <span className="text-cyan-300 font-semibold">Groq LPUs / OpenAI SDK</span>
+                    </div>
+                    <div className="flex justify-between p-2.5 rounded-lg bg-[#070b13] border border-[#162030]">
+                      <span className="text-gray-400">Cost Optimization:</span>
+                      <span className="text-emerald-400 font-semibold">On-Demand Execution</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* RAG Card */}
+                <div className="p-5 rounded-2xl bg-[#0c121e] border border-[#1b263b] shadow-xl space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-mono font-bold uppercase tracking-wider text-cyan-400 flex items-center gap-2">
+                      <Database size={15} />
+                      RAG Organizational Store
+                    </span>
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-cyan-950/70 text-cyan-300 border border-cyan-500/30">
+                      Vectorized
+                    </span>
+                  </div>
+                  <div className="space-y-2 text-xs font-mono">
+                    <div className="flex justify-between p-2.5 rounded-lg bg-[#070b13] border border-[#162030]">
+                      <span className="text-gray-400">Vector Storage:</span>
+                      <span className="text-white font-semibold">SQLite (incidents_kb.db)</span>
+                    </div>
+                    <div className="flex justify-between p-2.5 rounded-lg bg-[#070b13] border border-[#162030]">
+                      <span className="text-gray-400">Embedding / Search:</span>
+                      <span className="text-cyan-300 font-semibold">TF-IDF Token Cosine + Keywords</span>
+                    </div>
+                    <div className="flex justify-between p-2.5 rounded-lg bg-[#070b13] border border-[#162030]">
+                      <span className="text-gray-400">Total Indexed Memories:</span>
+                      <span className="text-purple-300 font-semibold">{ragIncidents.length} Records</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Ingestion & Connectivity */}
+              <div className="p-5 rounded-2xl bg-[#0c121e] border border-[#1b263b] shadow-xl space-y-4">
+                <span className="text-xs font-mono font-bold uppercase tracking-wider text-emerald-400 flex items-center gap-2">
+                  <Radio size={15} />
+                  Ingestion Pipelines & Connectivity
+                </span>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs font-mono">
+                  <div className="p-3 rounded-xl bg-[#070b13] border border-[#162030] space-y-1">
+                    <span className="text-[10px] text-gray-500 uppercase">Webhook Endpoint</span>
+                    <div className="text-gray-200 font-semibold truncate">POST /webhook/github</div>
+                    <span className="text-[10px] text-emerald-400">HMAC-SHA256 Ready</span>
+                  </div>
+                  <div className="p-3 rounded-xl bg-[#070b13] border border-[#162030] space-y-1">
+                    <span className="text-[10px] text-gray-500 uppercase">Live Event Stream</span>
+                    <div className="text-gray-200 font-semibold truncate">GET /events/stream</div>
+                    <span className={`text-[10px] ${sseConnected ? "text-emerald-400" : "text-amber-400"}`}>
+                      {sseConnected ? "SSE Connected" : "Awaiting Listener"}
+                    </span>
+                  </div>
+                  <div className="p-3 rounded-xl bg-[#070b13] border border-[#162030] space-y-1">
+                    <span className="text-[10px] text-gray-500 uppercase">GitHub Token</span>
+                    <div className="text-gray-200 font-semibold truncate">
+                      {healthStatus?.has_token_configured ? "Token Configured" : "Override Available"}
+                    </div>
+                    <span className="text-[10px] text-cyan-400">GitHub Actions API v3</span>
                   </div>
                 </div>
               </div>
