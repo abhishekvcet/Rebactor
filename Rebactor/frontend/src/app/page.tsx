@@ -391,7 +391,7 @@ export default function Home() {
       <nav className="w-16 shrink-0 bg-[#06080e] border-r border-[#192233] flex flex-col items-center justify-between py-4 select-none z-20">
         <div className="flex flex-col items-center gap-6 w-full">
           {/* Rebactor Logo Icon */}
-          <div className="w-10 h-10 flex items-center justify-center p-1">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#1e1b4b] to-[#0f172a] border border-[#312e81] flex items-center justify-center p-1.5 cursor-pointer">
             <img
               src="/rebactor-logo.png"
               alt="Rebactor Logo"
