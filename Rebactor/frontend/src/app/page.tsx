@@ -391,11 +391,11 @@ export default function Home() {
       <nav className="w-16 shrink-0 bg-[#06080e] border-r border-[#192233] flex flex-col items-center justify-between py-4 select-none z-20">
         <div className="flex flex-col items-center gap-6 w-full">
           {/* Rebactor Logo Icon */}
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#1e1b4b] to-[#0f172a] border border-[#6366f1]/40 flex items-center justify-center shadow-[0_0_20px_rgba(99,102,241,0.35)] cursor-pointer group hover:border-[#a855f7]/60 transition-all p-1">
+          <div className="w-10 h-10 flex items-center justify-center p-1">
             <img
               src="/rebactor-logo.png"
               alt="Rebactor Logo"
-              className="w-full h-full object-contain filter drop-shadow-[0_0_6px_rgba(255,255,255,0.7)] group-hover:scale-110 transition-transform duration-200"
+              className="w-full h-full object-contain"
             />
           </div>
 
@@ -746,7 +746,7 @@ export default function Home() {
         {/* Footer Info */}
         <div className="pt-3 border-t border-[#172030] flex items-center justify-between text-[10px] font-mono text-gray-500">
           <div className="flex items-center gap-1.5">
-            <img src="/rebactor-logo.png" alt="Rebactor" className="w-4 h-4 object-contain filter drop-shadow-[0_0_3px_rgba(255,255,255,0.6)]" />
+            <img src="/rebactor-logo.png" alt="Rebactor" className="w-4 h-4 object-contain" />
             <span className="text-gray-300 font-semibold">Rebactor AI</span>
           </div>
           <span className="text-[#a855f7] bg-[#a855f7]/10 px-1.5 py-0.5 rounded border border-[#a855f7]/20">v2.2-pro</span>
