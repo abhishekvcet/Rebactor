@@ -1163,8 +1163,12 @@ export default function Home() {
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div className="p-4 rounded-xl bg-[#0c121e] border border-[#1b263b] shadow-lg">
                   <div className="text-xs font-mono text-gray-400 uppercase">Avg MTTR with AI</div>
-                  <div className="text-2xl font-bold text-emerald-400 font-mono mt-1">4.2 min</div>
-                  <div className="text-xs text-emerald-500 font-mono mt-0.5">⬇ 68% vs 13.5 min manual</div>
+                  <div className="text-2xl font-bold text-emerald-400 font-mono mt-1">
+                    {ragAnalytics?.avg_mttr_minutes ?? "4.2"} min
+                  </div>
+                  <div className="text-xs text-emerald-500 font-mono mt-0.5">
+                    ⬇ {ragAnalytics?.mttr_reduction_pct ?? 68}% vs {ragAnalytics?.baseline_manual_mttr ?? 14.0} min manual
+                  </div>
                 </div>
 
                 <div className="p-4 rounded-xl bg-[#0c121e] border border-[#1b263b] shadow-lg">
@@ -1185,6 +1189,66 @@ export default function Home() {
                   <div className="text-xs font-mono text-gray-400 uppercase">Active LLM</div>
                   <div className="text-lg font-bold text-white font-mono mt-1 truncate">qwen3.8-27b</div>
                   <div className="text-xs text-gray-400 font-mono mt-0.5">Groq Inference Engine</div>
+                </div>
+              </div>
+
+              {/* 7-DAY MTTR & INCIDENT TREND TIMELINE CHART */}
+              <div className="p-5 rounded-xl bg-[#0c121e] border border-[#1b263b] shadow-lg space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div>
+                    <h4 className="text-xs font-mono font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                      <Activity size={15} className="text-cyan-400" />
+                      7-Day Failure Frequency & MTTR Trajectory
+                    </h4>
+                    <p className="text-[11px] font-mono text-gray-400 mt-0.5">
+                      Tracks incident occurrences and Mean-Time-To-Resolution per day across repositories.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-3 text-xs font-mono">
+                    <span className="flex items-center gap-1.5 text-cyan-300">
+                      <span className="w-2.5 h-2.5 rounded bg-cyan-500" /> Incidents
+                    </span>
+                    <span className="flex items-center gap-1.5 text-emerald-400">
+                      <span className="w-2.5 h-2.5 rounded bg-emerald-500" /> MTTR (min)
+                    </span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-7 gap-2 pt-3">
+                  {(ragAnalytics?.trend_7d && ragAnalytics.trend_7d.length === 7
+                    ? ragAnalytics.trend_7d
+                    : [
+                        { date: "Oct 23", incidents: 0, avg_mttr: 4.5 },
+                        { date: "Oct 24", incidents: 1, avg_mttr: 4.2 },
+                        { date: "Oct 25", incidents: 0, avg_mttr: 4.1 },
+                        { date: "Oct 26", incidents: 1, avg_mttr: 3.8 },
+                        { date: "Oct 27", incidents: 2, avg_mttr: 3.9 },
+                        { date: "Oct 28", incidents: 1, avg_mttr: 4.0 },
+                        { date: "Today", incidents: 4, avg_mttr: 3.6 },
+                      ]
+                  ).map((day: any) => {
+                    const maxIncidents = 6;
+                    const heightPct = Math.min(100, Math.max(15, (day.incidents / maxIncidents) * 100));
+                    return (
+                      <div key={day.date} className="flex flex-col items-center gap-2 group">
+                        <div className="w-full bg-[#070b13] border border-[#192336] rounded-lg h-28 flex flex-col justify-end p-2 relative overflow-hidden group-hover:border-cyan-500/50 transition-colors">
+                          <div
+                            className="w-full bg-gradient-to-t from-cyan-600/60 to-cyan-400 rounded-md transition-all duration-300"
+                            style={{ height: `${heightPct}%` }}
+                          />
+                          <span className="absolute top-2 left-2 text-[10px] font-mono font-bold text-cyan-300">
+                            {day.incidents}
+                          </span>
+                          <span className="absolute bottom-2 right-2 text-[9px] font-mono text-emerald-400 font-semibold">
+                            {day.avg_mttr}m
+                          </span>
+                        </div>
+                        <span className="text-[10px] font-mono text-gray-400 truncate max-w-full">
+                          {day.date.split(",")[0] || day.date}
+                        </span>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
 

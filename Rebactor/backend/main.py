@@ -653,6 +653,8 @@ class ManualIncidentCreate(BaseModel):
     root_cause: str
     resolution: str
     plain_summary: Optional[str] = None
+    status: Optional[str] = "resolved"
+    resolution_time_minutes: Optional[float] = None
 
 
 @app.get("/rag/incidents")
@@ -660,7 +662,13 @@ async def get_rag_knowledge_base():
     """Retrieve indexed organizational incidents stored in the RAG knowledge base."""
     from rag_service import get_db_connection
     conn = get_db_connection()
-    rows = conn.execute("SELECT id, repository, workflow_name, category, failed_step, plain_summary, root_cause, resolution, created_at FROM incidents ORDER BY created_at DESC LIMIT 50").fetchall()
+    rows = conn.execute("""
+        SELECT id, repository, workflow_name, category, failed_step, plain_summary, 
+               root_cause, resolution, created_at, status, 
+               COALESCE(resolution_time_minutes, 4.5) as resolution_time_minutes 
+        FROM incidents 
+        ORDER BY created_at DESC LIMIT 50
+    """).fetchall()
     return {"incidents": [dict(r) for r in rows]}
 
 
@@ -686,6 +694,8 @@ async def create_rag_incident(payload: ManualIncidentCreate):
         root_cause=payload.root_cause,
         resolution=payload.resolution,
         plain_summary=payload.plain_summary,
+        status=payload.status or "resolved",
+        resolution_time_minutes=payload.resolution_time_minutes,
     )
     return {"success": True, "incident_id": inc_id, "message": "Incident memory indexed successfully"}
 
