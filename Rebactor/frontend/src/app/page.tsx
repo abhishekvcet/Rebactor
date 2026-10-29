@@ -1464,7 +1464,9 @@ export default function Home() {
                 <div className="p-5 rounded-2xl bg-[#0c121e] border border-[#1b263b] shadow-xl group">
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-mono text-gray-400 uppercase tracking-wider">AI Diagnosis Accuracy</span>
-                    <Info size={13} className="text-gray-500" title="Based on evaluated diagnoses matching confirmed root-cause signatures" />
+                    <span title="Based on evaluated diagnoses matching confirmed root-cause signatures">
+                      <Info size={13} className="text-gray-500" />
+                    </span>
                   </div>
                   <div className="text-3xl font-bold text-purple-400 font-mono mt-2">
                     98.2%
