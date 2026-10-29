@@ -1655,136 +1655,148 @@ export default function Home() {
         </div>
       </main>
 
-      {/* 4. DEDICATED INCIDENT DETAIL PAGE / MODAL */}
+      {/* 4. DEDICATED INCIDENT DETAIL SLIDER DRAWER FROM RIGHT */}
       {selectedIncident && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4 overflow-y-auto">
-          <div className="bg-[#0b101c] border border-[#1f2b42] rounded-3xl max-w-4xl w-full p-7 shadow-2xl space-y-6 my-8 max-h-[90vh] overflow-y-auto">
-            {/* Modal Header */}
-            <div className="flex items-start justify-between border-b border-[#1b253a] pb-4">
-              <div className="space-y-1">
-                <div className="flex items-center gap-2.5">
-                  <span className="font-mono text-xs font-bold text-cyan-400 bg-cyan-950/60 px-2.5 py-1 rounded-md border border-cyan-500/30">
-                    {selectedIncident.id}
-                  </span>
-                  <span className="text-xs font-mono px-2.5 py-1 rounded-md bg-purple-950/70 text-purple-300 border border-purple-500/30">
-                    {selectedIncident.category}
-                  </span>
-                  <span className="text-xs font-mono px-2.5 py-1 rounded-md bg-emerald-950/70 text-emerald-300 border border-emerald-500/30">
-                    Status: {selectedIncident.status || "Resolved"}
-                  </span>
+        <div className="fixed inset-0 z-50 overflow-hidden bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+          {/* Backdrop Click Closes Drawer */}
+          <div
+            className="absolute inset-0 cursor-pointer"
+            onClick={() => setSelectedIncident(null)}
+          />
+
+          {/* Right Slide-over Panel */}
+          <div className="absolute inset-y-0 right-0 max-w-full flex pl-10">
+            <div className="w-screen max-w-2xl bg-[#0b101c] border-l border-[#1f2b42] shadow-2xl flex flex-col justify-between overflow-hidden transform transition-all ease-in-out duration-300 animate-in slide-in-from-right">
+              {/* Drawer Header */}
+              <div className="px-6 py-5 bg-[#090d18] border-b border-[#1b253a] flex items-start justify-between">
+                <div className="space-y-1.5 pr-4">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-mono text-xs font-bold text-cyan-400 bg-cyan-950/60 px-2.5 py-1 rounded-md border border-cyan-500/30">
+                      {selectedIncident.id}
+                    </span>
+                    <span className="text-xs font-mono px-2.5 py-1 rounded-md bg-purple-950/70 text-purple-300 border border-purple-500/30">
+                      {selectedIncident.category}
+                    </span>
+                    <span className="text-xs font-mono px-2.5 py-1 rounded-md bg-emerald-950/70 text-emerald-300 border border-emerald-500/30">
+                      Status: {selectedIncident.status || "Resolved"}
+                    </span>
+                  </div>
+                  <h3 className="text-base font-bold text-white font-mono truncate">
+                    {selectedIncident.repository} • {selectedIncident.workflow_name}
+                  </h3>
+                  <p className="text-[11px] text-gray-400 font-mono">
+                    Recorded at {new Date(selectedIncident.created_at).toLocaleString()}
+                  </p>
                 </div>
-                <h3 className="text-lg font-bold text-white font-mono mt-1">
-                  {selectedIncident.repository} • {selectedIncident.workflow_name}
-                </h3>
-                <p className="text-xs text-gray-400 font-mono">
-                  Recorded at {new Date(selectedIncident.created_at).toLocaleString()}
-                </p>
-              </div>
 
-              <button
-                onClick={() => setSelectedIncident(null)}
-                className="w-8 h-8 rounded-lg bg-[#141d2f] hover:bg-[#202d45] text-gray-300 hover:text-white flex items-center justify-center text-sm font-mono cursor-pointer transition-colors"
-              >
-                ✕
-              </button>
-            </div>
-
-            {/* Target & Summary */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="p-4 rounded-xl bg-[#070b13] border border-[#182338] space-y-1">
-                <span className="text-[10px] font-mono text-gray-500 uppercase tracking-wider block">Failed Step Target</span>
-                <code className="text-xs font-mono text-rose-300 bg-rose-950/40 px-2 py-0.5 rounded block truncate">
-                  {selectedIncident.failed_step}
-                </code>
-              </div>
-              <div className="p-4 rounded-xl bg-[#070b13] border border-[#182338] space-y-1">
-                <span className="text-[10px] font-mono text-gray-500 uppercase tracking-wider block">Resolution Time (MTTR)</span>
-                <span className="text-xs font-mono text-emerald-400 font-bold block">
-                  {selectedIncident.resolution_time_minutes ? `${selectedIncident.resolution_time_minutes} minutes` : "3.8 minutes"}
-                </span>
-              </div>
-              <div className="p-4 rounded-xl bg-[#070b13] border border-[#182338] space-y-1">
-                <span className="text-[10px] font-mono text-gray-500 uppercase tracking-wider block">Knowledge Base Match</span>
-                <span className="text-xs font-mono text-cyan-400 font-bold block">
-                  {selectedIncident.similarity_score ? `${Math.round(selectedIncident.similarity_score * 100)}% Similarity` : "Indexed Incident"}
-                </span>
-              </div>
-            </div>
-
-            {/* Root Cause Analysis */}
-            <div className="p-5 rounded-2xl bg-rose-950/20 border border-rose-500/30 space-y-2">
-              <h4 className="text-xs font-mono font-bold uppercase tracking-wider text-rose-400 flex items-center gap-2">
-                <AlertCircle size={15} />
-                Root Cause Analysis
-              </h4>
-              <p className="text-xs font-mono text-rose-200 leading-relaxed">
-                {selectedIncident.root_cause}
-              </p>
-            </div>
-
-            {/* Plain English Summary */}
-            {selectedIncident.plain_summary && (
-              <div className="p-5 rounded-2xl bg-[#0e1626] border border-[#1d2a42] space-y-2">
-                <h4 className="text-xs font-mono font-bold uppercase tracking-wider text-cyan-400 flex items-center gap-2">
-                  <Sparkles size={15} />
-                  Plain-Language Summary
-                </h4>
-                <p className="text-xs text-gray-300 leading-relaxed font-sans">
-                  {selectedIncident.plain_summary}
-                </p>
-              </div>
-            )}
-
-            {/* Suggested Remediation */}
-            <div className="p-5 rounded-2xl bg-emerald-950/25 border border-emerald-500/30 space-y-3">
-              <div className="flex items-center justify-between">
-                <h4 className="text-xs font-mono font-bold uppercase tracking-wider text-emerald-400 flex items-center gap-2">
-                  <CheckSquare size={15} />
-                  Suggested Remediation & Fix Action
-                </h4>
-                <button
-                  onClick={() => copyToClipboard(selectedIncident.resolution, selectedIncident.id)}
-                  className="px-3 py-1 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 text-xs font-mono flex items-center gap-1.5 transition-colors cursor-pointer"
-                >
-                  {copiedId === selectedIncident.id ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
-                  {copiedId === selectedIncident.id ? "Copied to Clipboard!" : "Copy Fix"}
-                </button>
-              </div>
-              <div className="p-3.5 bg-[#05080e] rounded-xl border border-emerald-500/20 font-mono text-xs text-emerald-200 leading-relaxed whitespace-pre-wrap">
-                {selectedIncident.resolution}
-              </div>
-            </div>
-
-            {/* Raw Extracted Failure Trace */}
-            {selectedIncident.raw_log && (
-              <div className="p-5 rounded-2xl bg-[#070b13] border border-[#1b253b] space-y-2">
-                <span className="text-[10px] font-mono text-gray-400 uppercase tracking-wider font-bold block">
-                  Failure Stderr / Targeted Log Window
-                </span>
-                <pre className="p-3.5 bg-[#04060a] rounded-xl border border-[#182133] text-[11px] font-mono text-gray-300 overflow-x-auto leading-relaxed max-h-48 whitespace-pre">
-                  {selectedIncident.raw_log}
-                </pre>
-              </div>
-            )}
-
-            {/* Modal Actions */}
-            <div className="flex items-center justify-between pt-3 border-t border-[#1b253a]">
-              <span className="text-xs font-mono text-gray-500">
-                Rebactor Continuous Incident Knowledge Engine
-              </span>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => copyToClipboard(selectedIncident.resolution, selectedIncident.id)}
-                  className="px-4 py-2 rounded-xl bg-[#111827] hover:bg-[#1a2333] border border-[#23314d] text-xs font-mono text-gray-200 cursor-pointer"
-                >
-                  Copy Remediation
-                </button>
                 <button
                   onClick={() => setSelectedIncident(null)}
-                  className="px-5 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-xs font-mono font-medium text-white shadow-[0_0_15px_rgba(6,182,212,0.4)] cursor-pointer"
+                  className="w-8 h-8 rounded-lg bg-[#141d2f] hover:bg-[#202d45] text-gray-300 hover:text-white flex items-center justify-center text-sm font-mono cursor-pointer transition-colors shrink-0"
                 >
-                  Done
+                  ✕
                 </button>
+              </div>
+
+              {/* Drawer Scrollable Body */}
+              <div className="flex-1 overflow-y-auto p-6 space-y-5">
+                {/* Target & Summary Metrics */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="p-3.5 rounded-xl bg-[#070b13] border border-[#182338] space-y-1">
+                    <span className="text-[10px] font-mono text-gray-500 uppercase tracking-wider block">Failed Step</span>
+                    <code className="text-xs font-mono text-rose-300 bg-rose-950/40 px-2 py-0.5 rounded block truncate">
+                      {selectedIncident.failed_step}
+                    </code>
+                  </div>
+                  <div className="p-3.5 rounded-xl bg-[#070b13] border border-[#182338] space-y-1">
+                    <span className="text-[10px] font-mono text-gray-500 uppercase tracking-wider block">Avg MTTR</span>
+                    <span className="text-xs font-mono text-emerald-400 font-bold block">
+                      {selectedIncident.resolution_time_minutes ? `${selectedIncident.resolution_time_minutes} minutes` : "3.8 minutes"}
+                    </span>
+                  </div>
+                  <div className="p-3.5 rounded-xl bg-[#070b13] border border-[#182338] space-y-1">
+                    <span className="text-[10px] font-mono text-gray-500 uppercase tracking-wider block">Knowledge Match</span>
+                    <span className="text-xs font-mono text-cyan-400 font-bold block">
+                      {selectedIncident.similarity_score ? `${Math.round(selectedIncident.similarity_score * 100)}% Similarity` : "Indexed Incident"}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Plain English Summary */}
+                {selectedIncident.plain_summary && (
+                  <div className="p-4 rounded-xl bg-[#0e1626] border border-[#1d2a42] space-y-1.5">
+                    <h4 className="text-xs font-mono font-bold uppercase tracking-wider text-cyan-400 flex items-center gap-1.5">
+                      <Sparkles size={14} />
+                      Plain-Language Summary
+                    </h4>
+                    <p className="text-xs text-gray-300 leading-relaxed font-sans">
+                      {selectedIncident.plain_summary}
+                    </p>
+                  </div>
+                )}
+
+                {/* Root Cause Analysis */}
+                <div className="p-4 rounded-xl bg-rose-950/20 border border-rose-500/30 space-y-1.5">
+                  <h4 className="text-xs font-mono font-bold uppercase tracking-wider text-rose-400 flex items-center gap-1.5">
+                    <AlertCircle size={14} />
+                    Root Cause Analysis
+                  </h4>
+                  <p className="text-xs font-mono text-rose-200 leading-relaxed">
+                    {selectedIncident.root_cause}
+                  </p>
+                </div>
+
+                {/* Suggested Remediation */}
+                <div className="p-4 rounded-xl bg-emerald-950/25 border border-emerald-500/30 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-xs font-mono font-bold uppercase tracking-wider text-emerald-400 flex items-center gap-1.5">
+                      <CheckSquare size={14} />
+                      Suggested Remediation & Fix Action
+                    </h4>
+                    <button
+                      onClick={() => copyToClipboard(selectedIncident.resolution, selectedIncident.id)}
+                      className="px-2.5 py-1 rounded bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 text-[11px] font-mono flex items-center gap-1 transition-colors cursor-pointer"
+                    >
+                      {copiedId === selectedIncident.id ? <Check size={11} className="text-emerald-400" /> : <Copy size={11} />}
+                      {copiedId === selectedIncident.id ? "Copied!" : "Copy Fix"}
+                    </button>
+                  </div>
+                  <div className="p-3 bg-[#05080e] rounded-lg border border-emerald-500/20 font-mono text-xs text-emerald-200 leading-relaxed whitespace-pre-wrap">
+                    {selectedIncident.resolution}
+                  </div>
+                </div>
+
+                {/* Raw Extracted Failure Trace */}
+                {selectedIncident.raw_log && (
+                  <div className="p-4 rounded-xl bg-[#070b13] border border-[#1b253b] space-y-1.5">
+                    <span className="text-[10px] font-mono text-gray-400 uppercase tracking-wider font-bold block">
+                      Failure Stderr / Targeted Log Excerpt
+                    </span>
+                    <pre className="p-3 bg-[#04060a] rounded-lg border border-[#182133] text-[11px] font-mono text-gray-300 overflow-x-auto leading-relaxed max-h-52 whitespace-pre">
+                      {selectedIncident.raw_log}
+                    </pre>
+                  </div>
+                )}
+              </div>
+
+              {/* Drawer Footer Actions */}
+              <div className="p-4 bg-[#090d18] border-t border-[#1b253a] flex items-center justify-between">
+                <span className="text-[11px] font-mono text-gray-500">
+                  Rebactor Incident Drawer
+                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => copyToClipboard(selectedIncident.resolution, selectedIncident.id)}
+                    className="px-3.5 py-1.5 rounded-lg bg-[#111827] hover:bg-[#1a2333] border border-[#23314d] text-xs font-mono text-gray-200 cursor-pointer transition-colors"
+                  >
+                    Copy Remediation
+                  </button>
+                  <button
+                    onClick={() => setSelectedIncident(null)}
+                    className="px-4 py-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-xs font-mono font-medium text-white shadow-[0_0_12px_rgba(6,182,212,0.4)] cursor-pointer transition-all"
+                  >
+                    Close
+                  </button>
+                </div>
               </div>
             </div>
           </div>
