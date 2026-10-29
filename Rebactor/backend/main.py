@@ -1,14 +1,22 @@
 """
 FastAPI Backend for GitHub Actions Detective / Log Extractor
-Refactored architecture supporting Next.js frontend with CORS, clean endpoints,
-intelligent log parsing, and GitHub REST API integration.
+Supports:
+1. Push Ingestion: Real-time GitHub Webhook listener (`POST /webhook/github`) with HMAC signature verification
+2. Pull Ingestion: On-demand REST queries (`/repos`, `/logs/{owner}/{repo}/failed`)
+3. Live Event Stream: Server-Sent Events (`GET /events/stream`) and recent events (`GET /events/recent`)
+4. Automated Failure Diagnostics & Root Cause Analysis
 """
 
 import os
 import re
+import hmac
+import hashlib
+import asyncio
+from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any
-from fastapi import FastAPI, HTTPException, Header, Query
+from fastapi import FastAPI, HTTPException, Header, Query, Request, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 import httpx
 from dotenv import load_dotenv
@@ -17,9 +25,9 @@ from dotenv import load_dotenv
 load_dotenv()
 
 app = FastAPI(
-    title="GitHub Actions Detective API",
-    description="Backend API for fetching repositories, workflows, and parsing failed CI/CD logs.",
-    version="2.0.0",
+    title="AI-Powered DevOps Failure Assistant API",
+    description="Backend API featuring real-time GitHub Webhook ingestion, automated CI/CD log diagnostics, and SSE streaming.",
+    version="2.1.0",
 )
 
 # CORS Configuration for Next.js frontend
@@ -35,6 +43,12 @@ app.add_middleware(
 )
 
 GITHUB_API_URL = "https://api.github.com"
+GITHUB_WEBHOOK_SECRET = os.getenv("GITHUB_WEBHOOK_SECRET", "")
+
+# In-memory store for recent webhook events and listeners for Server-Sent Events (SSE)
+RECENT_WEBHOOK_EVENTS: List[Dict[str, Any]] = []
+MAX_EVENT_HISTORY = 50
+SSE_SUBSCRIBERS: List[asyncio.Queue] = []
 
 
 # -------------------------------------------------------------
@@ -99,6 +113,15 @@ class LogsResponse(BaseModel):
     extracted_logs: List[FailedJobLog] = []
 
 
+class WebhookStatusResponse(BaseModel):
+    status: str
+    message: str
+    event: Optional[str] = None
+    run_id: Optional[int] = None
+    repository: Optional[str] = None
+    diagnostics_triggered: bool = False
+
+
 # -------------------------------------------------------------
 # Helper Functions
 # -------------------------------------------------------------
@@ -118,6 +141,23 @@ def get_github_token(header_token: Optional[str]) -> str:
             detail="GitHub token not configured. Please supply X-GitHub-Token header or set GITHUB_TOKEN in backend .env",
         )
     return token
+
+
+def verify_github_signature(payload_body: bytes, signature_header: Optional[str], secret: str) -> bool:
+    """Verify GitHub HMAC SHA-256 webhook signature."""
+    if not secret:
+        # If no secret configured, allow during development/testing
+        return True
+    if not signature_header or not signature_header.startswith("sha256="):
+        return False
+
+    expected_sig = "sha256=" + hmac.new(
+        secret.encode("utf-8"),
+        payload_body,
+        hashlib.sha256
+    ).hexdigest()
+
+    return hmac.compare_digest(expected_sig, signature_header)
 
 
 def parse_log_summary(raw_text: str, job_name: str = "unknown-job") -> ParsedLogSummary:
@@ -196,6 +236,77 @@ def parse_log_summary(raw_text: str, job_name: str = "unknown-job") -> ParsedLog
     )
 
 
+async def broadcast_sse_event(event_data: Dict[str, Any]):
+    """Broadcast an ingested event to all active Next.js frontend SSE listeners."""
+    # Add to in-memory history
+    RECENT_WEBHOOK_EVENTS.insert(0, event_data)
+    if len(RECENT_WEBHOOK_EVENTS) > MAX_EVENT_HISTORY:
+        RECENT_WEBHOOK_EVENTS.pop()
+
+    for queue in SSE_SUBSCRIBERS:
+        await queue.put(event_data)
+
+
+async def process_failed_run_background(owner: str, repo: str, run_id: int, run_data: Dict[str, Any]):
+    """Background task to fetch logs, perform diagnosis, and broadcast the failure event."""
+    token = os.getenv("GITHUB_TOKEN", "")
+    if not token or token == "your_personal_access_token_here":
+        print(f"[Webhook Background] Cannot fetch logs: GITHUB_TOKEN not configured.")
+        return
+
+    headers = get_github_headers(token)
+
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            jobs_url = f"{GITHUB_API_URL}/repos/{owner}/{repo}/actions/runs/{run_id}/jobs"
+            jobs_resp = await client.get(jobs_url, headers=headers)
+            if jobs_resp.status_code != 200:
+                print(f"[Webhook Background] Failed to fetch jobs for run {run_id}: {jobs_resp.text}")
+                return
+
+            jobs_data = jobs_resp.json()
+            failed_jobs = [j for j in jobs_data.get("jobs", []) if j.get("conclusion") == "failure"]
+
+            diagnosed_jobs: List[Dict[str, Any]] = []
+
+            for job in failed_jobs:
+                job_id = job.get("id")
+                job_name = job.get("name", "Unknown Job")
+
+                logs_url = f"{GITHUB_API_URL}/repos/{owner}/{repo}/actions/jobs/{job_id}/logs"
+                logs_resp = await client.get(logs_url, headers=headers, follow_redirects=True)
+                raw_log = logs_resp.text if logs_resp.status_code == 200 else f"Failed to fetch job log (HTTP {logs_resp.status_code})"
+
+                diagnostic = parse_log_summary(raw_log, job_name)
+                diagnosed_jobs.append({
+                    "job_id": job_id,
+                    "job_name": job_name,
+                    "job_url": job.get("html_url"),
+                    "diagnostic": diagnostic.model_dump(),
+                    "raw_log_preview": raw_log[:500] if raw_log else "",
+                })
+
+            event_record = {
+                "id": f"event-{run_id}-{int(datetime.now(timezone.utc).timestamp())}",
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "event_type": "workflow_run_failure",
+                "repository": f"{owner}/{repo}",
+                "run_id": run_id,
+                "run_name": run_data.get("name", "Workflow Run"),
+                "branch": run_data.get("head_branch"),
+                "commit": (run_data.get("head_sha") or "")[:7],
+                "sender": run_data.get("triggering_actor", {}).get("login") or "GitHub Action",
+                "diagnosed_jobs": diagnosed_jobs,
+                "status": "diagnosed",
+            }
+
+            await broadcast_sse_event(event_record)
+            print(f"[Webhook Ingestion] Successfully processed & diagnosed failed run #{run_id} for {owner}/{repo}")
+
+    except Exception as e:
+        print(f"[Webhook Background Error] Error processing run #{run_id}: {str(e)}")
+
+
 # -------------------------------------------------------------
 # Endpoints
 # -------------------------------------------------------------
@@ -205,11 +316,153 @@ async def health_check():
     token_present = bool(os.getenv("GITHUB_TOKEN") and os.getenv("GITHUB_TOKEN") != "your_personal_access_token_here")
     return {
         "status": "healthy",
-        "service": "GitHub Actions Detective API",
+        "service": "AI-Powered DevOps Failure Assistant API",
         "has_token_configured": token_present,
+        "webhook_endpoint": "/webhook/github",
+        "has_webhook_secret": bool(GITHUB_WEBHOOK_SECRET),
     }
 
 
+# =============================================================
+# PILLAR 1: REAL-TIME WEBHOOK INGESTION (PUSH)
+# =============================================================
+@app.post("/webhook/github", response_model=WebhookStatusResponse)
+async def github_webhook_listener(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    x_github_event: Optional[str] = Header(None, alias="X-GitHub-Event"),
+    x_hub_signature_256: Optional[str] = Header(None, alias="X-Hub-Signature-256"),
+):
+    """
+    Ingest GitHub Webhook events in real time.
+    Listens for 'workflow_run' or 'workflow_job' events with conclusion == 'failure'.
+    Automatically triggers asynchronous background failure diagnostics.
+    """
+    payload_body = await request.body()
+
+    # Validate HMAC SHA256 Signature if secret is configured
+    if GITHUB_WEBHOOK_SECRET and not verify_github_signature(payload_body, x_hub_signature_256, GITHUB_WEBHOOK_SECRET):
+        raise HTTPException(status_code=401, detail="Invalid HMAC X-Hub-Signature-256 signature")
+
+    try:
+        payload = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON payload")
+
+    event_type = x_github_event or "unknown"
+
+    # Ping event from GitHub when webhook is first configured
+    if event_type == "ping":
+        repo_name = payload.get("repository", {}).get("full_name", "unknown")
+        zen = payload.get("zen", "")
+        return WebhookStatusResponse(
+            status="ok",
+            message=f"GitHub Webhook ping received successfully for {repo_name}. Zen: {zen}",
+            event="ping",
+            repository=repo_name,
+            diagnostics_triggered=False,
+        )
+
+    # Workflow Run Events (e.g. action: completed, conclusion: failure)
+    if event_type == "workflow_run":
+        action = payload.get("action")
+        wf_run = payload.get("workflow_run", {})
+        conclusion = wf_run.get("conclusion")
+        repo_data = payload.get("repository", {})
+        repo_full_name = repo_data.get("full_name") or f"{repo_data.get('owner', {}).get('login')}/{repo_data.get('name')}"
+        owner = repo_data.get("owner", {}).get("login")
+        repo = repo_data.get("name")
+        run_id = wf_run.get("id")
+
+        if action == "completed" and conclusion == "failure":
+            # Real-time trigger: Push to background diagnosis
+            background_tasks.add_task(process_failed_run_background, owner, repo, run_id, wf_run)
+            return WebhookStatusResponse(
+                status="accepted",
+                message=f"Failure detected on run #{run_id}. Automatic diagnosis initiated.",
+                event="workflow_run",
+                run_id=run_id,
+                repository=repo_full_name,
+                diagnostics_triggered=True,
+            )
+
+        return WebhookStatusResponse(
+            status="ignored",
+            message=f"Workflow run event received (action: {action}, conclusion: {conclusion}). Only completed failures are diagnosed.",
+            event="workflow_run",
+            run_id=run_id,
+            repository=repo_full_name,
+            diagnostics_triggered=False,
+        )
+
+    # Workflow Job Events
+    if event_type == "workflow_job":
+        action = payload.get("action")
+        job = payload.get("workflow_job", {})
+        conclusion = job.get("conclusion")
+        run_id = job.get("run_id")
+        repo_data = payload.get("repository", {})
+        owner = repo_data.get("owner", {}).get("login")
+        repo = repo_data.get("name")
+
+        if action == "completed" and conclusion == "failure":
+            background_tasks.add_task(process_failed_run_background, owner, repo, run_id, {"name": job.get("workflow_name", "Job Run")})
+            return WebhookStatusResponse(
+                status="accepted",
+                message=f"Failed job '{job.get('name')}' detected in run #{run_id}. Diagnosis triggered.",
+                event="workflow_job",
+                run_id=run_id,
+                repository=repo_data.get("full_name"),
+                diagnostics_triggered=True,
+            )
+
+    return WebhookStatusResponse(
+        status="received",
+        message=f"Event '{event_type}' received (no action required).",
+        event=event_type,
+        diagnostics_triggered=False,
+    )
+
+
+# =============================================================
+# LIVE SSE STREAM FOR REAL-TIME FRONTEND UPDATES
+# =============================================================
+@app.get("/events/stream")
+async def sse_event_stream(request: Request):
+    """Server-Sent Events endpoint streaming real-time failure alerts to the frontend."""
+    queue = asyncio.Queue()
+    SSE_SUBSCRIBERS.append(queue)
+
+    async def event_generator():
+        try:
+            # Send initial connection handshake
+            yield f"event: connected\ndata: {{\"connected\": true, \"message\": \"SSE live stream active\"}}\n\n"
+            while True:
+                if await request.is_disconnected():
+                    break
+                try:
+                    data = await asyncio.wait_for(queue.get(), timeout=25.0)
+                    import json
+                    yield f"event: failure_alert\ndata: {json.dumps(data)}\n\n"
+                except asyncio.TimeoutError:
+                    # Keep-alive heartbeat ping
+                    yield f": heartbeat\n\n"
+        finally:
+            if queue in SSE_SUBSCRIBERS:
+                SSE_SUBSCRIBERS.remove(queue)
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+
+@app.get("/events/recent")
+async def get_recent_events():
+    """Retrieve history of recently ingested webhook failure events."""
+    return {"events": RECENT_WEBHOOK_EVENTS}
+
+
+# =============================================================
+# PULL INGESTION: ON-DEMAND REST APIS
+# =============================================================
 @app.get("/repos")
 async def get_user_repos(
     token: Optional[str] = Header(None, alias="X-GitHub-Token", description="GitHub Personal Access Token"),

@@ -34,3 +34,56 @@ export async function fetchFailedLogs(owner: string, repo: string, limit: number
   }
   return res.json();
 }
+
+export async function fetchRecentWebhookEvents() {
+  const res = await fetch(`${API_URL}/events/recent`);
+  if (!res.ok) throw new Error("Failed to load recent events");
+  return res.json();
+}
+
+export async function simulateWebhookFailure(payload: {
+  repo: string;
+  workflow: string;
+  branch: string;
+  conclusion: string;
+}) {
+  const [owner, name] = payload.repo.includes("/") ? payload.repo.split("/") : ["abhishekvcet", payload.repo];
+  const fakeRunId = Math.floor(1000000 + Math.random() * 9000000);
+
+  const mockPayload = {
+    action: "completed",
+    workflow_run: {
+      id: fakeRunId,
+      name: payload.workflow,
+      head_branch: payload.branch,
+      head_sha: "9f3a8b2c4e1d5",
+      conclusion: payload.conclusion,
+      triggering_actor: { login: "devops-engineer" },
+    },
+    repository: {
+      full_name: `${owner}/${name}`,
+      name: name,
+      owner: { login: owner },
+    },
+  };
+
+  const res = await fetch(`${API_URL}/webhook/github`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-GitHub-Event": "workflow_run",
+    },
+    body: JSON.stringify(mockPayload),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `Simulation request failed (${res.status})`);
+  }
+
+  return res.json();
+}
+
+export function createEventSource() {
+  return new EventSource(`${API_URL}/events/stream`);
+}

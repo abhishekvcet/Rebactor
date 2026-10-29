@@ -61,4 +61,28 @@ export interface HealthResponse {
   status: string;
   service: string;
   has_token_configured: boolean;
+  webhook_endpoint?: string;
+  has_webhook_secret?: boolean;
+}
+
+export interface WebhookDiagnosedJob {
+  job_id: number;
+  job_name: string;
+  job_url?: string;
+  diagnostic: ParsedLogSummary;
+  raw_log_preview?: string;
+}
+
+export interface LiveWebhookEvent {
+  id: string;
+  timestamp: string;
+  event_type: string;
+  repository: string;
+  run_id: number;
+  run_name: string;
+  branch?: string;
+  commit?: string;
+  sender?: string;
+  diagnosed_jobs: WebhookDiagnosedJob[];
+  status: string;
 }
