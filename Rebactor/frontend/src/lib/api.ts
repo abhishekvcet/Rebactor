@@ -20,17 +20,45 @@ export async function fetchRepositories(customToken?: string) {
   return res.json();
 }
 
-export async function fetchFailedLogs(owner: string, repo: string, limit: number = 5, customToken?: string) {
+export async function fetchFailedLogs(
+  owner: string,
+  repo: string,
+  limit: number = 5,
+  customToken?: string,
+  autoDiagnose: boolean = false
+) {
   const headers: Record<string, string> = {};
   if (customToken) headers["X-GitHub-Token"] = customToken;
 
-  const res = await fetch(`${API_URL}/logs/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/failed?limit=${limit}`, {
-    headers,
-  });
+  const res = await fetch(
+    `${API_URL}/logs/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/failed?limit=${limit}&auto_diagnose=${autoDiagnose}`,
+    {
+      headers,
+    }
+  );
 
   if (!res.ok) {
     const errorData = await res.json().catch(() => ({}));
     throw new Error(errorData.detail || `Failed to fetch logs (${res.status})`);
+  }
+  return res.json();
+}
+
+export async function analyzeSingleLog(payload: {
+  raw_log: string;
+  job_name?: string;
+  repository?: string;
+  run_id?: number;
+}) {
+  const res = await fetch(`${API_URL}/analyze`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}));
+    throw new Error(errorData.detail || `AI diagnosis request failed (${res.status})`);
   }
   return res.json();
 }

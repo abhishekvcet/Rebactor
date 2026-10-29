@@ -49,7 +49,9 @@ def get_db_connection() -> sqlite3.Connection:
                 resolution TEXT NOT NULL,
                 created_at TEXT NOT NULL,
                 status TEXT DEFAULT 'resolved',
-                resolution_time_minutes REAL DEFAULT 4.5
+                resolution_time_minutes REAL DEFAULT 4.5,
+                occurrence_count INTEGER DEFAULT 1,
+                updated_at TEXT
             )
         """)
         # Safe migration for existing tables created before these columns were added
@@ -59,6 +61,10 @@ def get_db_connection() -> sqlite3.Connection:
             conn.execute("ALTER TABLE incidents ADD COLUMN status TEXT DEFAULT 'resolved'")
         if "resolution_time_minutes" not in columns:
             conn.execute("ALTER TABLE incidents ADD COLUMN resolution_time_minutes REAL DEFAULT 4.5")
+        if "occurrence_count" not in columns:
+            conn.execute("ALTER TABLE incidents ADD COLUMN occurrence_count INTEGER DEFAULT 1")
+        if "updated_at" not in columns:
+            conn.execute("ALTER TABLE incidents ADD COLUMN updated_at TEXT")
     return conn
 
 
@@ -115,19 +121,45 @@ def store_incident(
     status: str = "resolved",
     resolution_time_minutes: Optional[float] = None,
 ) -> str:
-    """Index an incident and its resolution into the organizational knowledge base."""
-    incident_id = f"inc-{run_id or int(datetime.now().timestamp())}"
+    """Index an incident and its resolution into the organizational knowledge base. Deduplicates identical recurring errors."""
     tokens = tokenize_error_log(raw_log)
-    created_at = datetime.now(timezone.utc).isoformat()
-    # Default resolution time estimate between 2.5 and 6.0 minutes if not given
+    now_iso = datetime.now(timezone.utc).isoformat()
     actual_res_time = resolution_time_minutes if resolution_time_minutes is not None else round(3.0 + (len(tokens) % 35) * 0.1, 1)
 
     conn = get_db_connection()
     with conn:
+        # Check if an identical incident already exists (same repository, workflow/job, failed_step, or identical root cause)
+        existing = conn.execute("""
+            SELECT id, occurrence_count FROM incidents 
+            WHERE (repository = ? OR repository = 'current-run')
+              AND failed_step = ?
+              AND (root_cause = ? OR category = ?)
+            ORDER BY created_at DESC LIMIT 1
+        """, (repository, failed_step, root_cause, category)).fetchone()
+
+        if existing:
+            # Update existing memory with latest run_id, occurrence increment, and timestamp
+            existing_id = existing["id"]
+            new_count = (existing["occurrence_count"] or 1) + 1
+            conn.execute("""
+                UPDATE incidents 
+                SET occurrence_count = ?,
+                    run_id = COALESCE(?, run_id),
+                    repository = CASE WHEN repository = 'current-run' THEN ? ELSE repository END,
+                    resolution = ?,
+                    plain_summary = COALESCE(?, plain_summary),
+                    updated_at = ?,
+                    resolution_time_minutes = ?
+                WHERE id = ?
+            """, (new_count, run_id, repository, resolution, plain_summary, now_iso, actual_res_time, existing_id))
+            return existing_id
+
+        # If it is a genuinely new incident, insert fresh row
+        incident_id = f"inc-{run_id or int(datetime.now().timestamp())}"
         conn.execute("""
             INSERT OR REPLACE INTO incidents 
-            (id, repository, run_id, workflow_name, category, failed_step, error_tokens, plain_summary, root_cause, resolution, created_at, status, resolution_time_minutes)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (id, repository, run_id, workflow_name, category, failed_step, error_tokens, plain_summary, root_cause, resolution, created_at, status, resolution_time_minutes, occurrence_count, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             incident_id,
             repository,
@@ -139,9 +171,11 @@ def store_incident(
             plain_summary,
             root_cause,
             resolution,
-            created_at,
+            now_iso,
             status,
             actual_res_time,
+            1,
+            now_iso,
         ))
     return incident_id
 

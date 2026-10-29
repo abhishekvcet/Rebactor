@@ -125,6 +125,13 @@ class WebhookStatusResponse(BaseModel):
     diagnostics_triggered: bool = False
 
 
+class AnalyzeLogRequest(BaseModel):
+    raw_log: str
+    job_name: Optional[str] = "workflow-job"
+    repository: Optional[str] = "unknown-repo"
+    run_id: Optional[int] = None
+
+
 # -------------------------------------------------------------
 # Helper Functions
 # -------------------------------------------------------------
@@ -512,8 +519,9 @@ async def get_failed_logs(
     repo: str,
     token: Optional[str] = Header(None, alias="X-GitHub-Token", description="GitHub Personal Access Token"),
     limit: int = Query(5, ge=1, le=20, description="Max failed workflows to inspect"),
+    auto_diagnose: bool = Query(False, description="Whether to automatically run LLM analysis for all failed jobs or defer to on-demand user clicks"),
 ):
-    """Retrieve failed workflow runs and auto-parsed error diagnostics for a repository."""
+    """Retrieve failed workflow runs and error logs. When auto_diagnose is False, saves LLM quota and runs diagnostics on-demand when requested by user."""
     github_token = get_github_token(token)
     headers = get_github_headers(github_token)
     runs_url = f"{GITHUB_API_URL}/repos/{owner}/{repo}/actions/runs"
@@ -598,13 +606,15 @@ async def get_failed_logs(
                         if s.get("conclusion") == "failure"
                     ]
 
-                    # Parse diagnostic summary using LLM reasoning
-                    diagnostic = await parse_log_summary(
-                        raw_log,
-                        job_name,
-                        repository=f"{owner}/{repo}",
-                        run_id=run_id,
-                    )
+                    # Parse diagnostic summary using LLM reasoning only if auto_diagnose is enabled
+                    diagnostic = None
+                    if auto_diagnose:
+                        diagnostic = await parse_log_summary(
+                            raw_log,
+                            job_name,
+                            repository=f"{owner}/{repo}",
+                            run_id=run_id,
+                        )
 
                     extracted_results.append(
                         FailedJobLog(
@@ -644,6 +654,17 @@ async def get_failed_logs(
         )
 
 
+@app.post("/analyze", response_model=ParsedLogSummary)
+async def analyze_single_log(payload: AnalyzeLogRequest):
+    """On-demand endpoint to run AI diagnosis for a specific log when triggered by user click."""
+    return await parse_log_summary(
+        raw_text=payload.raw_log,
+        job_name=payload.job_name or "workflow-job",
+        repository=payload.repository or "unknown-repo",
+        run_id=payload.run_id,
+    )
+
+
 class ManualIncidentCreate(BaseModel):
     repository: str
     workflow_name: str
@@ -665,7 +686,9 @@ async def get_rag_knowledge_base():
     rows = conn.execute("""
         SELECT id, repository, workflow_name, category, failed_step, plain_summary, 
                root_cause, resolution, created_at, status, 
-               COALESCE(resolution_time_minutes, 4.5) as resolution_time_minutes 
+               COALESCE(resolution_time_minutes, 4.5) as resolution_time_minutes,
+               COALESCE(occurrence_count, 1) as occurrence_count,
+               updated_at
         FROM incidents 
         ORDER BY created_at DESC LIMIT 50
     """).fetchall()
