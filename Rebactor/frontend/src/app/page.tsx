@@ -39,20 +39,8 @@ import {
 } from "lucide-react";
 
 export default function Home() {
-  // Lazy state initializer directly reads URL hash or localStorage synchronously before first render
-  const [navSection, setNavSection] = useState<"ci-cd" | "webhooks" | "rag-kb" | "analytics">(() => {
-    if (typeof window !== "undefined") {
-      const hash = window.location.hash.replace("#", "") as "ci-cd" | "webhooks" | "rag-kb" | "analytics";
-      const savedSection = localStorage.getItem("datadog_nav_section") as "ci-cd" | "webhooks" | "rag-kb" | "analytics";
-      if (hash && ["ci-cd", "webhooks", "rag-kb", "analytics"].includes(hash)) {
-        return hash;
-      }
-      if (savedSection && ["ci-cd", "webhooks", "rag-kb", "analytics"].includes(savedSection)) {
-        return savedSection;
-      }
-    }
-    return "ci-cd";
-  });
+  const [isMounted, setIsMounted] = useState<boolean>(false);
+  const [navSection, setNavSection] = useState<"ci-cd" | "webhooks" | "rag-kb" | "analytics">("ci-cd");
 
   const [repos, setRepos] = useState<RepoItem[]>([]);
   const [selectedRepoStr, setSelectedRepoStr] = useState<string>("");
@@ -77,6 +65,19 @@ export default function Home() {
   // RAG Incidents state
   const [ragIncidents, setRagIncidents] = useState<any[]>([]);
   const [loadingRag, setLoadingRag] = useState<boolean>(false);
+
+  // On client mount, read saved section and set isMounted flag to eliminate hydration mismatch
+  useEffect(() => {
+    setIsMounted(true);
+    if (typeof window !== "undefined") {
+      const hash = window.location.hash.replace("#", "") as "ci-cd" | "webhooks" | "rag-kb" | "analytics";
+      const savedSection = localStorage.getItem("datadog_nav_section") as "ci-cd" | "webhooks" | "rag-kb" | "analytics";
+      const target = (hash && ["ci-cd", "webhooks", "rag-kb", "analytics"].includes(hash))
+        ? hash
+        : (savedSection && ["ci-cd", "webhooks", "rag-kb", "analytics"].includes(savedSection) ? savedSection : "ci-cd");
+      setNavSection(target);
+    }
+  }, []);
 
   // Sync hash changes if user uses browser Back/Forward buttons
   useEffect(() => {
@@ -244,6 +245,16 @@ export default function Home() {
       setSimulating(false);
     }
   };
+
+  if (!isMounted) {
+    return (
+      <div className="flex h-screen w-screen overflow-hidden bg-[#070b13] text-[#e2e8f0]">
+        <nav className="w-16 shrink-0 bg-[#06080e] border-r border-[#192233]" />
+        <aside className="w-80 shrink-0 bg-[#090d16] border-r border-[#192233]" />
+        <main className="flex-1 h-screen bg-[#070b12]" />
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-[#070b13] text-[#e2e8f0]">
