@@ -53,6 +53,8 @@ import {
   ArrowUpDown,
   ChevronDown,
   Calendar,
+  Globe,
+  Link2,
 } from "lucide-react";
 
 export default function Home() {
@@ -63,6 +65,7 @@ export default function Home() {
   const [selectedRepoStr, setSelectedRepoStr] = useState<string>("");
   const [owner, setOwner] = useState<string>("");
   const [repoName, setRepoName] = useState<string>("");
+  const [publicRepoUrl, setPublicRepoUrl] = useState<string>("");
   const [limit, setLimit] = useState<number>(5);
   const [customToken, setCustomToken] = useState<string>("");
   const [showTokenInput, setShowTokenInput] = useState<boolean>(false);
@@ -328,6 +331,36 @@ export default function Home() {
     }
   };
 
+  // Helper to parse either a full GitHub URL (e.g. https://github.com/owner/repo) or owner/repo shorthand
+  const parseGitHubRepoUrl = (input: string): { owner: string; repo: string } | null => {
+    if (!input) return null;
+    const trimmed = input.trim().replace(/\/+$/, "").replace(/\.git$/, "");
+
+    // Case 1: https://github.com/owner/repo or http://github.com/owner/repo or git@github.com:owner/repo
+    const urlMatch = trimmed.match(/(?:https?:\/\/github\.com\/|git@github\.com:)([^/]+)\/([^/]+)/i);
+    if (urlMatch && urlMatch[1] && urlMatch[2]) {
+      return { owner: urlMatch[1], repo: urlMatch[2] };
+    }
+
+    // Case 2: owner/repo
+    const parts = trimmed.split("/").map((p) => p.trim()).filter(Boolean);
+    if (parts.length === 2 && !trimmed.startsWith("http")) {
+      return { owner: parts[0], repo: parts[1] };
+    }
+
+    return null;
+  };
+
+  const handlePublicRepoUrlChange = (val: string) => {
+    setPublicRepoUrl(val);
+    const parsed = parseGitHubRepoUrl(val);
+    if (parsed) {
+      setOwner(parsed.owner);
+      setRepoName(parsed.repo);
+      setErrorMsg(null);
+    }
+  };
+
   const handleRepoChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const val = e.target.value;
     setSelectedRepoStr(val);
@@ -337,6 +370,7 @@ export default function Home() {
       const parsed = JSON.parse(val);
       setOwner(parsed.owner);
       setRepoName(parsed.name);
+      setPublicRepoUrl(`https://github.com/${parsed.owner}/${parsed.name}`);
       fetchLogsForRepo(parsed.owner, parsed.name, limit);
     } catch {
       // ignore
@@ -345,7 +379,7 @@ export default function Home() {
 
   const fetchLogsForRepo = async (targetOwner: string, targetRepo: string, targetLimit: number) => {
     if (!targetOwner || !targetRepo) {
-      setErrorMsg("Please specify both repository owner and name.");
+      setErrorMsg("Please specify a valid repository URL or owner/name.");
       return;
     }
 
@@ -366,7 +400,26 @@ export default function Home() {
 
   const handleFormSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    fetchLogsForRepo(owner, repoName, limit);
+    let effectiveOwner = owner;
+    let effectiveRepo = repoName;
+
+    // If user typed into the public URL input, parse it
+    if (publicRepoUrl.trim()) {
+      const parsed = parseGitHubRepoUrl(publicRepoUrl);
+      if (parsed) {
+        effectiveOwner = parsed.owner;
+        effectiveRepo = parsed.repo;
+        setOwner(parsed.owner);
+        setRepoName(parsed.repo);
+      }
+    }
+
+    if (!effectiveOwner || !effectiveRepo) {
+      setErrorMsg("Please provide a valid GitHub repository URL (e.g. https://github.com/facebook/react) or owner/repo.");
+      return;
+    }
+
+    fetchLogsForRepo(effectiveOwner, effectiveRepo, limit);
   };
 
   const handleSaveToken = () => {
@@ -606,12 +659,39 @@ export default function Home() {
               {/* Form */}
               <form onSubmit={handleFormSubmit} className="space-y-3.5">
                 <div className="p-3 rounded-xl bg-[#0c121e] border border-[#1b263b] space-y-3 shadow-sm">
+                  {/* Public Repository URL Input */}
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between text-xs font-mono text-gray-300">
+                      <span className="flex items-center gap-1.5 font-medium text-cyan-300">
+                        <Globe size={13} className="text-cyan-400" />
+                        Public Repo URL / Shorthand
+                      </span>
+                      <span className="text-[10px] text-gray-500 font-mono">Any public repo</span>
+                    </div>
+                    <div className="relative">
+                      <Link2 size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-500" />
+                      <input
+                        type="text"
+                        value={publicRepoUrl}
+                        onChange={(e) => handlePublicRepoUrlChange(e.target.value)}
+                        placeholder="https://github.com/owner/repo or owner/repo"
+                        className="w-full bg-[#070b13] border border-[#1b263b] rounded-lg pl-7 pr-2.5 py-1.5 text-xs font-mono text-white placeholder-gray-500 focus:outline-none focus:border-cyan-400 transition-colors"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <div className="h-px bg-[#162032] flex-1" />
+                    <span className="text-[10px] font-mono text-gray-500 uppercase">or select from account</span>
+                    <div className="h-px bg-[#162032] flex-1" />
+                  </div>
+
                   {/* Repo Selector Header */}
                   <div className="space-y-1.5">
                     <div className="flex items-center justify-between text-xs font-mono text-gray-300">
                       <span className="flex items-center gap-1.5 font-medium text-white">
                         <FolderGit2 size={13} className="text-[#a855f7]" />
-                        Active Repository
+                        Authorized Repositories
                       </span>
                       <button
                         type="button"
@@ -630,7 +710,7 @@ export default function Home() {
                       className="w-full bg-[#070b13] border border-[#1b263b] rounded-lg px-2.5 py-2 text-xs font-mono text-gray-200 focus:outline-none focus:border-[#6366f1] transition-colors cursor-pointer"
                     >
                       <option value="">
-                        {loadingRepos ? "Loading accessible repos..." : "-- Select from GitHub --"}
+                        {loadingRepos ? "Loading accessible repos..." : "-- Select from GitHub Account --"}
                       </option>
                       {repos.map((r) => (
                         <option
@@ -643,15 +723,20 @@ export default function Home() {
                     </select>
                   </div>
 
-                  {/* Manual Owner / Repo fallback */}
+                  {/* Owner & Repo parsed chips */}
                   <div className="grid grid-cols-2 gap-2 pt-1 border-t border-[#162032]">
                     <div className="space-y-1">
                       <label className="text-[10px] font-mono uppercase tracking-wider text-gray-400">Owner</label>
                       <input
                         type="text"
                         value={owner}
-                        onChange={(e) => setOwner(e.target.value)}
-                        placeholder="e.g. org"
+                        onChange={(e) => {
+                          setOwner(e.target.value);
+                          if (e.target.value && repoName) {
+                            setPublicRepoUrl(`https://github.com/${e.target.value}/${repoName}`);
+                          }
+                        }}
+                        placeholder="e.g. facebook"
                         required
                         className="w-full bg-[#070b13] border border-[#1b263b] rounded-lg px-2.5 py-1.5 text-xs font-mono text-white focus:outline-none focus:border-[#6366f1]"
                       />
@@ -661,8 +746,13 @@ export default function Home() {
                       <input
                         type="text"
                         value={repoName}
-                        onChange={(e) => setRepoName(e.target.value)}
-                        placeholder="e.g. service"
+                        onChange={(e) => {
+                          setRepoName(e.target.value);
+                          if (owner && e.target.value) {
+                            setPublicRepoUrl(`https://github.com/${owner}/${e.target.value}`);
+                          }
+                        }}
+                        placeholder="e.g. react"
                         required
                         className="w-full bg-[#070b13] border border-[#1b263b] rounded-lg px-2.5 py-1.5 text-xs font-mono text-white focus:outline-none focus:border-[#6366f1]"
                       />
