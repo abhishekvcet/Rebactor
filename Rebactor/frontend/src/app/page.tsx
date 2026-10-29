@@ -71,7 +71,7 @@ export default function Home() {
     setIsMounted(true);
     if (typeof window !== "undefined") {
       const hash = window.location.hash.replace("#", "") as "ci-cd" | "webhooks" | "rag-kb" | "analytics";
-      const savedSection = localStorage.getItem("datadog_nav_section") as "ci-cd" | "webhooks" | "rag-kb" | "analytics";
+      const savedSection = localStorage.getItem("rebactor_nav_section") as "ci-cd" | "webhooks" | "rag-kb" | "analytics";
       const target = (hash && ["ci-cd", "webhooks", "rag-kb", "analytics"].includes(hash))
         ? hash
         : (savedSection && ["ci-cd", "webhooks", "rag-kb", "analytics"].includes(savedSection) ? savedSection : "ci-cd");
@@ -94,7 +94,7 @@ export default function Home() {
   const handleNavChange = (section: "ci-cd" | "webhooks" | "rag-kb" | "analytics") => {
     setNavSection(section);
     if (typeof window !== "undefined") {
-      localStorage.setItem("datadog_nav_section", section);
+      localStorage.setItem("rebactor_nav_section", section);
       window.location.hash = section;
     }
   };
@@ -612,14 +612,14 @@ export default function Home() {
 
         {/* Footer Info */}
         <div className="pt-3 border-t border-[#172030] flex items-center justify-between text-[10px] font-mono text-gray-500">
-          <span>Datadog Architecture</span>
+          <span>Rebactor AI Engine</span>
           <span className="text-[#a855f7]">v2.2-pro</span>
         </div>
       </aside>
 
       {/* 3. MAIN CONTENT WORKSPACE */}
       <main className="flex-1 h-screen flex flex-col overflow-hidden bg-[#070b12]">
-        {/* Top Datadog Breadcrumb Bar */}
+        {/* Top Breadcrumb Bar */}
         <div className="h-14 shrink-0 px-6 border-b border-[#172030] flex items-center justify-between bg-[#080d18]/90 backdrop-blur z-10">
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-2 text-xs font-mono text-gray-400">
