@@ -7,6 +7,7 @@ import {
   fetchRepositories,
   fetchFailedLogs,
   fetchRecentWebhookEvents,
+  fetchRagIncidents,
   simulateWebhookFailure,
   createEventSource,
 } from "@/lib/api";
@@ -25,11 +26,20 @@ import {
   Webhook,
   Activity,
   Send,
+  Database,
+  BarChart3,
+  Server,
+  Workflow,
+  Cpu,
+  Layers,
+  Settings,
+  HelpCircle,
+  Clock,
   Sparkles,
 } from "lucide-react";
 
 export default function Home() {
-  const [activeTab, setActiveTab] = useState<"on-demand" | "webhooks">("on-demand");
+  const [navSection, setNavSection] = useState<"ci-cd" | "webhooks" | "rag-kb" | "analytics">("ci-cd");
   const [repos, setRepos] = useState<RepoItem[]>([]);
   const [selectedRepoStr, setSelectedRepoStr] = useState<string>("");
   const [owner, setOwner] = useState<string>("");
@@ -50,13 +60,16 @@ export default function Home() {
   const [simulating, setSimulating] = useState<boolean>(false);
   const [simulationStatus, setSimulationStatus] = useState<string | null>(null);
 
-  // Initial load
+  // RAG Incidents state
+  const [ragIncidents, setRagIncidents] = useState<any[]>([]);
+  const [loadingRag, setLoadingRag] = useState<boolean>(false);
+
   useEffect(() => {
     checkHealth();
     loadRepos();
     loadRecentEvents();
+    loadRagIncidents();
 
-    // Setup Server-Sent Events (SSE) listener
     let es: EventSource | null = null;
     try {
       es = createEventSource();
@@ -97,6 +110,20 @@ export default function Home() {
       }
     } catch {
       // ignore
+    }
+  };
+
+  const loadRagIncidents = async () => {
+    setLoadingRag(true);
+    try {
+      const data = await fetchRagIncidents();
+      if (data.incidents) {
+        setRagIncidents(data.incidents);
+      }
+    } catch {
+      // ignore
+    } finally {
+      setLoadingRag(false);
     }
   };
 
@@ -172,8 +199,10 @@ export default function Home() {
         conclusion: "failure",
       });
       setSimulationStatus(`Accepted: ${result.message}`);
-      // Refresh recent events after 1s
-      setTimeout(loadRecentEvents, 1200);
+      setTimeout(() => {
+        loadRecentEvents();
+        loadRagIncidents();
+      }, 1200);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Simulation failed";
       setSimulationStatus(`Error: ${message}`);
@@ -183,130 +212,153 @@ export default function Home() {
   };
 
   return (
-    <div className="flex flex-col lg:flex-row h-screen w-full overflow-hidden">
-      {/* SIDEBAR */}
-      <aside className="w-full lg:w-[420px] shrink-0 bg-[#0a0e17] border-r border-[#1a2333] flex flex-col justify-between p-6 overflow-y-auto">
-        <div className="flex flex-col gap-5">
-          {/* Brand header */}
-          <header className="border-b border-[#1a2333] pb-4">
-            <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full bg-[#00f5d4]/10 border border-[#00f5d4]/30 text-[#00f5d4] mb-2.5">
-              <Terminal size={14} />
-              <span className="font-mono text-xs font-semibold uppercase tracking-wider">
-                DevOps Diagnostics 2.1
-              </span>
-            </div>
-            <h1 className="text-2xl font-bold tracking-tight text-white font-sans flex items-center gap-2">
-              GitHub Actions Detective
-            </h1>
-            <p className="text-xs text-gray-400 mt-1 leading-relaxed">
-              Real-time Webhook Ingestion & Automated Root-Cause Failure Advisor.
-            </p>
-          </header>
+    <div className="flex h-screen w-screen overflow-hidden bg-[#070b13] text-[#e2e8f0]">
+      {/* 1. DATADOG-STYLE SLIM ICON NAVBAR */}
+      <nav className="w-16 shrink-0 bg-[#06080e] border-r border-[#192233] flex flex-col items-center justify-between py-4 select-none z-20">
+        <div className="flex flex-col items-center gap-6 w-full">
+          {/* Datadog style Logo Icon */}
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#6366f1] via-[#7c3aed] to-[#a855f7] flex items-center justify-center shadow-[0_0_15px_rgba(124,58,237,0.4)] cursor-pointer group">
+            <Cpu size={22} className="text-white group-hover:rotate-12 transition-transform duration-200" />
+          </div>
 
-          {/* Mode Switcher Tabs */}
-          <div className="grid grid-cols-2 p-1 bg-[#111827] rounded-lg border border-[#1e293b]">
+          {/* Primary Nav Items */}
+          <div className="flex flex-col items-center gap-2 w-full px-2">
             <button
-              onClick={() => setActiveTab("on-demand")}
-              className={`flex items-center justify-center gap-2 py-1.5 px-3 rounded-md text-xs font-mono font-medium transition-all ${
-                activeTab === "on-demand"
-                  ? "bg-[#00f5d4] text-[#00382f] shadow-sm font-semibold"
-                  : "text-gray-400 hover:text-white"
+              onClick={() => setNavSection("ci-cd")}
+              title="CI/CD Pipeline Diagnostics"
+              className={`w-11 h-11 rounded-xl flex items-center justify-center transition-all ${
+                navSection === "ci-cd"
+                  ? "bg-[#6366f1] text-white shadow-[0_0_12px_rgba(99,102,241,0.5)]"
+                  : "text-gray-400 hover:text-white hover:bg-[#131b2c]"
               }`}
             >
-              <Zap size={13} />
-              On-Demand (Pull)
+              <Workflow size={20} />
             </button>
+
             <button
-              onClick={() => setActiveTab("webhooks")}
-              className={`flex items-center justify-center gap-2 py-1.5 px-3 rounded-md text-xs font-mono font-medium transition-all ${
-                activeTab === "webhooks"
-                  ? "bg-[#00f5d4] text-[#00382f] shadow-sm font-semibold"
-                  : "text-gray-400 hover:text-white"
+              onClick={() => setNavSection("webhooks")}
+              title="Real-Time Webhook Stream"
+              className={`w-11 h-11 rounded-xl flex items-center justify-center relative transition-all ${
+                navSection === "webhooks"
+                  ? "bg-[#6366f1] text-white shadow-[0_0_12px_rgba(99,102,241,0.5)]"
+                  : "text-gray-400 hover:text-white hover:bg-[#131b2c]"
               }`}
             >
-              <Webhook size={13} />
-              Webhooks (Push)
+              <Webhook size={20} />
               {liveEvents.length > 0 && (
-                <span className="px-1.5 py-0.2 rounded-full bg-rose-500 text-white text-[10px]">
-                  {liveEvents.length}
-                </span>
+                <span className="absolute top-1.5 right-1.5 w-2.5 h-2.5 bg-rose-500 rounded-full ring-2 ring-[#06080e]" />
               )}
             </button>
+
+            <button
+              onClick={() => {
+                setNavSection("rag-kb");
+                loadRagIncidents();
+              }}
+              title="RAG Knowledge Base & Memories"
+              className={`w-11 h-11 rounded-xl flex items-center justify-center transition-all ${
+                navSection === "rag-kb"
+                  ? "bg-[#6366f1] text-white shadow-[0_0_12px_rgba(99,102,241,0.5)]"
+                  : "text-gray-400 hover:text-white hover:bg-[#131b2c]"
+              }`}
+            >
+              <Database size={20} />
+            </button>
+
+            <button
+              onClick={() => setNavSection("analytics")}
+              title="MTTR & Pipeline Health Analytics"
+              className={`w-11 h-11 rounded-xl flex items-center justify-center transition-all ${
+                navSection === "analytics"
+                  ? "bg-[#6366f1] text-white shadow-[0_0_12px_rgba(99,102,241,0.5)]"
+                  : "text-gray-400 hover:text-white hover:bg-[#131b2c]"
+              }`}
+            >
+              <BarChart3 size={20} />
+            </button>
           </div>
+        </div>
 
-          {/* System Status Indicators */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between p-2.5 rounded-lg bg-[#111827] border border-[#1e293b] text-xs font-mono">
-              <div className="flex items-center gap-2">
-                <span
-                  className={`w-2 h-2 rounded-full ${
-                    healthStatus?.status === "healthy" ? "bg-emerald-400" : "bg-amber-400 animate-pulse"
-                  }`}
-                />
-                <span className="text-gray-300">FastAPI Service</span>
-              </div>
-              <div className="flex items-center gap-1.5 text-gray-400 text-[11px]">
-                {healthStatus?.has_token_configured ? (
-                  <span className="text-emerald-400 flex items-center gap-1">
-                    <ShieldCheck size={13} /> GitHub PAT Set
-                  </span>
-                ) : (
-                  <span className="text-amber-400 flex items-center gap-1">
-                    <Key size={13} /> Needs Token
-                  </span>
-                )}
-              </div>
-            </div>
+        {/* Bottom Utility Items */}
+        <div className="flex flex-col items-center gap-3 w-full px-2">
+          <button
+            onClick={() => checkHealth()}
+            title="Service Health"
+            className="w-10 h-10 rounded-lg flex items-center justify-center text-gray-400 hover:text-emerald-400 hover:bg-[#131b2c] transition-colors"
+          >
+            <Server size={18} />
+          </button>
+          <div className="w-8 h-8 rounded-full bg-[#1e293b] flex items-center justify-center text-xs font-mono font-bold text-gray-300 border border-[#334155]">
+            AS
+          </div>
+        </div>
+      </nav>
 
-            <div className="flex items-center justify-between p-2.5 rounded-lg bg-[#111827] border border-[#1e293b] text-xs font-mono">
-              <div className="flex items-center gap-2">
-                <Radio
-                  size={14}
-                  className={sseConnected ? "text-emerald-400 animate-pulse" : "text-gray-500"}
-                />
-                <span className="text-gray-300">Live SSE Stream</span>
-              </div>
-              <span
-                className={`text-[11px] px-2 py-0.5 rounded ${
-                  sseConnected
-                    ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
-                    : "bg-gray-800 text-gray-500"
-                }`}
-              >
-                {sseConnected ? "Connected" : "Reconnecting"}
+      {/* 2. DATADOG-STYLE CONTEXTUAL SECONDARY DRAWER / SIDEBAR */}
+      <aside className="w-80 shrink-0 bg-[#090d16] border-r border-[#192233] flex flex-col justify-between p-5 overflow-y-auto">
+        <div className="space-y-5">
+          {/* Section Header */}
+          <div className="flex items-center justify-between border-b border-[#1a2436] pb-3">
+            <div>
+              <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-[#a855f7]">
+                {navSection === "ci-cd" && "CI/CD Triage"}
+                {navSection === "webhooks" && "Real-Time Ingestion"}
+                {navSection === "rag-kb" && "Org Knowledge Base"}
+                {navSection === "analytics" && "MTTR Metrics"}
               </span>
+              <h2 className="text-base font-bold text-white mt-0.5">
+                {navSection === "ci-cd" && "Workflow Extractor"}
+                {navSection === "webhooks" && "Event Stream"}
+                {navSection === "rag-kb" && "RAG Incident Memory"}
+                {navSection === "analytics" && "Pipeline Insights"}
+              </h2>
+            </div>
+            <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-[#101827] border border-[#1e2b42] text-[10px] font-mono text-cyan-300">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+              Live
             </div>
           </div>
 
-          {activeTab === "on-demand" ? (
-            /* ON DEMAND PULL FORM */
+          {/* Service Status Bar */}
+          <div className="p-2.5 rounded-lg bg-[#0e1422] border border-[#1b263b] flex items-center justify-between text-xs font-mono">
+            <span className="text-gray-400 flex items-center gap-1.5">
+              <Radio size={13} className={sseConnected ? "text-emerald-400 animate-pulse" : "text-gray-500"} />
+              SSE Stream
+            </span>
+            <span className={sseConnected ? "text-emerald-400" : "text-gray-500"}>
+              {sseConnected ? "Connected" : "Disconnected"}
+            </span>
+          </div>
+
+          {/* VIEW: CI-CD TRIAGE CONTROLS */}
+          {navSection === "ci-cd" && (
             <div className="space-y-4">
               {/* Optional Token Toggle */}
-              <div className="border border-[#1f293d] rounded-lg p-2.5 bg-[#0d1424]">
+              <div className="border border-[#1a2538] rounded-lg p-2.5 bg-[#0b101c]">
                 <button
                   type="button"
                   onClick={() => setShowTokenInput(!showTokenInput)}
                   className="flex items-center justify-between w-full text-xs font-mono text-cyan-400 hover:text-cyan-300"
                 >
                   <span className="flex items-center gap-1.5">
-                    <Key size={13} />
-                    Override GitHub Token
+                    <Key size={12} />
+                    GitHub Token Override
                   </span>
                   <span>{showTokenInput ? "▲" : "▼"}</span>
                 </button>
                 {showTokenInput && (
-                  <div className="mt-2.5 space-y-2">
+                  <div className="mt-2 space-y-2">
                     <input
                       type="password"
                       placeholder="ghp_xxxx or github_pat_xxxx"
                       value={customToken}
                       onChange={(e) => setCustomToken(e.target.value)}
-                      className="w-full bg-[#080d1a] border border-[#202c42] rounded px-3 py-1.5 text-xs font-mono text-white placeholder-gray-600 focus:outline-none focus:border-[#00f5d4]"
+                      className="w-full bg-[#070b14] border border-[#1e2a3f] rounded px-2.5 py-1.5 text-xs font-mono text-white focus:outline-none focus:border-[#6366f1]"
                     />
                     <button
                       type="button"
                       onClick={handleSaveToken}
-                      className="w-full bg-[#16233a] hover:bg-[#203152] text-xs font-mono text-white py-1.5 rounded transition-colors"
+                      className="w-full bg-[#1e283d] hover:bg-[#2b3a57] text-xs font-mono text-white py-1 rounded transition-colors"
                     >
                       Apply & Reload Repos
                     </button>
@@ -315,29 +367,28 @@ export default function Home() {
               </div>
 
               {/* Form */}
-              <form onSubmit={handleFormSubmit} className="flex flex-col gap-3.5">
-                <div className="flex flex-col gap-1.5">
+              <form onSubmit={handleFormSubmit} className="space-y-3">
+                <div className="space-y-1">
                   <div className="flex items-center justify-between text-xs font-mono text-gray-300">
-                    <span className="flex items-center gap-1.5">
-                      <FolderGit2 size={14} className="text-[#00f5d4]" />
-                      Select Repository
+                    <span className="flex items-center gap-1">
+                      <FolderGit2 size={13} className="text-[#a855f7]" />
+                      Repository
                     </span>
                     <button
                       type="button"
                       onClick={() => loadRepos()}
                       disabled={loadingRepos}
-                      className="text-[11px] text-gray-400 hover:text-white flex items-center gap-1 transition-colors"
+                      className="text-[10px] text-gray-400 hover:text-white flex items-center gap-1"
                     >
-                      <RefreshCw size={11} className={loadingRepos ? "animate-spin text-[#00f5d4]" : ""} />
+                      <RefreshCw size={10} className={loadingRepos ? "animate-spin" : ""} />
                       Refresh
                     </button>
                   </div>
-
                   <select
                     value={selectedRepoStr}
                     onChange={handleRepoChange}
                     disabled={loadingRepos}
-                    className="w-full bg-[#111827] border border-[#1f293d] rounded-lg px-3 py-2 text-xs font-mono text-gray-200 focus:outline-none focus:border-[#00f5d4] transition-colors cursor-pointer"
+                    className="w-full bg-[#0e1422] border border-[#1b263b] rounded-lg px-2.5 py-2 text-xs font-mono text-gray-200 focus:outline-none focus:border-[#6366f1] transition-colors cursor-pointer"
                   >
                     <option value="">
                       {loadingRepos ? "Loading accessible repos..." : "-- Choose Repository --"}
@@ -353,35 +404,35 @@ export default function Home() {
                   </select>
                 </div>
 
-                <div className="grid grid-cols-2 gap-2.5">
-                  <div className="flex flex-col gap-1">
-                    <label className="text-xs font-mono text-gray-400">Owner</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-mono text-gray-400">Owner</label>
                     <input
                       type="text"
                       value={owner}
                       onChange={(e) => setOwner(e.target.value)}
-                      placeholder="e.g. torvalds"
+                      placeholder="owner"
                       required
-                      className="bg-[#111827] border border-[#1f293d] rounded-lg px-3 py-1.5 text-xs font-mono text-white focus:outline-none focus:border-[#00f5d4]"
+                      className="w-full bg-[#0e1422] border border-[#1b263b] rounded-lg px-2.5 py-1.5 text-xs font-mono text-white focus:outline-none focus:border-[#6366f1]"
                     />
                   </div>
-                  <div className="flex flex-col gap-1">
-                    <label className="text-xs font-mono text-gray-400">Repo Name</label>
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-mono text-gray-400">Repo</label>
                     <input
                       type="text"
                       value={repoName}
                       onChange={(e) => setRepoName(e.target.value)}
-                      placeholder="e.g. linux"
+                      placeholder="repo"
                       required
-                      className="bg-[#111827] border border-[#1f293d] rounded-lg px-3 py-1.5 text-xs font-mono text-white focus:outline-none focus:border-[#00f5d4]"
+                      className="w-full bg-[#0e1422] border border-[#1b263b] rounded-lg px-2.5 py-1.5 text-xs font-mono text-white focus:outline-none focus:border-[#6366f1]"
                     />
                   </div>
                 </div>
 
-                <div className="flex flex-col gap-1">
-                  <div className="flex justify-between items-center text-xs font-mono text-gray-400">
-                    <span>Runs Limit</span>
-                    <span className="text-[11px] text-gray-500">Max 20</span>
+                <div className="space-y-1">
+                  <div className="flex justify-between items-center text-[11px] font-mono text-gray-400">
+                    <span>Scan Limit</span>
+                    <span className="text-[10px] text-gray-500">Max 20</span>
                   </div>
                   <input
                     type="number"
@@ -389,74 +440,64 @@ export default function Home() {
                     max={20}
                     value={limit}
                     onChange={(e) => setLimit(Number(e.target.value))}
-                    className="bg-[#111827] border border-[#1f293d] rounded-lg px-3 py-1.5 text-xs font-mono text-white focus:outline-none focus:border-[#00f5d4]"
+                    className="w-full bg-[#0e1422] border border-[#1b263b] rounded-lg px-2.5 py-1.5 text-xs font-mono text-white focus:outline-none focus:border-[#6366f1]"
                   />
                 </div>
 
                 <button
                   type="submit"
                   disabled={loadingLogs || !owner || !repoName}
-                  className="mt-1 w-full bg-[#00f5d4] hover:bg-[#26fedc] text-[#00382f] font-mono font-semibold text-xs py-2.5 px-4 rounded-lg transition-all duration-150 flex items-center justify-center gap-2 shadow-[0_0_15px_rgba(0,245,212,0.25)] active:scale-[0.99] disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                  className="w-full mt-2 bg-gradient-to-r from-[#6366f1] to-[#8b5cf6] hover:from-[#5558e6] hover:to-[#7c4def] text-white font-mono font-semibold text-xs py-2.5 px-4 rounded-lg transition-all duration-150 flex items-center justify-center gap-2 shadow-[0_0_12px_rgba(99,102,241,0.3)] active:scale-[0.99] disabled:opacity-50 cursor-pointer"
                 >
                   {loadingLogs ? (
                     <>
-                      <RefreshCw size={14} className="animate-spin" />
-                      <span>Diagnosing Failures...</span>
+                      <RefreshCw size={13} className="animate-spin" />
+                      <span>Diagnosing via AI...</span>
                     </>
                   ) : (
                     <>
-                      <Zap size={15} />
-                      <span>Scan Failed Workflows</span>
+                      <Zap size={14} />
+                      <span>Scan Workflows</span>
                     </>
                   )}
                 </button>
               </form>
             </div>
-          ) : (
-            /* WEBHOOKS PUSH INFO & SIMULATOR */
-            <div className="space-y-4">
-              <div className="p-3.5 rounded-lg bg-[#0e1626] border border-[#1d2b45] space-y-2">
-                <div className="text-xs font-mono font-semibold text-cyan-300 flex items-center gap-1.5">
-                  <Webhook size={14} />
-                  Webhook Listener Active
+          )}
+
+          {/* VIEW: WEBHOOK SIMULATOR & ENDPOINT */}
+          {navSection === "webhooks" && (
+            <div className="space-y-3.5">
+              <div className="p-3 rounded-lg bg-[#0c121e] border border-[#1a263d] space-y-1.5">
+                <span className="text-[10px] font-mono uppercase font-bold text-cyan-400">Listener Target</span>
+                <div className="p-1.5 rounded bg-[#070b13] border border-[#182337] text-[10px] font-mono text-gray-300 break-all select-all">
+                  POST /webhook/github
                 </div>
-                <p className="text-[11px] text-gray-400 leading-relaxed font-mono">
-                  GitHub pushes failures directly to:
+                <p className="text-[10px] text-gray-400 font-mono">
+                  Listens for GitHub Actions <code className="text-rose-400">failure</code> conclusion events.
                 </p>
-                <div className="p-2 rounded bg-[#070b13] border border-[#1a253a] text-[11px] font-mono text-[#00f5d4] select-all break-all">
-                  POST http://localhost:8001/webhook/github
-                </div>
-                <div className="text-[10px] text-gray-500 font-mono">
-                  Listens for: <code className="text-gray-300">workflow_run</code>,{" "}
-                  <code className="text-gray-300">workflow_job</code> with conclusion:{" "}
-                  <code className="text-rose-400 font-bold">failure</code>.
-                </div>
               </div>
 
-              {/* Simulation Box */}
-              <div className="p-3.5 rounded-lg bg-[#141b2b] border border-[#23314d] space-y-2.5">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-mono font-semibold text-white flex items-center gap-1.5">
-                    <Send size={13} className="text-[#00f5d4]" />
-                    Simulate CI/CD Failure
-                  </span>
-                  <span className="text-[10px] font-mono text-gray-400">Dev Test</span>
-                </div>
-                <p className="text-[11px] text-gray-400 leading-relaxed">
-                  Sends an authentic GitHub Actions failure webhook payload to test real-time diagnosis.
+              <div className="p-3 rounded-lg bg-[#0e1524] border border-[#1e2c45] space-y-2">
+                <span className="text-xs font-mono font-semibold text-white flex items-center gap-1.5">
+                  <Send size={13} className="text-[#a855f7]" />
+                  Simulate Incident
+                </span>
+                <p className="text-[11px] text-gray-400 leading-tight">
+                  Pushes an authentic GitHub webhook payload to test real-time AI diagnosis.
                 </p>
                 <button
                   type="button"
                   onClick={handleSimulateWebhook}
                   disabled={simulating}
-                  className="w-full bg-[#1b2a47] hover:bg-[#253961] text-[#00f5d4] border border-[#00f5d4]/30 hover:border-[#00f5d4] text-xs font-mono font-medium py-2 rounded-lg transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                  className="w-full bg-[#1b253b] hover:bg-[#253554] text-[#a855f7] border border-[#a855f7]/30 hover:border-[#a855f7] text-xs font-mono py-2 rounded-lg transition-all flex items-center justify-center gap-2 cursor-pointer"
                 >
-                  <Activity size={14} className={simulating ? "animate-spin" : ""} />
-                  {simulating ? "Pushing Webhook..." : "Trigger Test Webhook Failure"}
+                  <Activity size={13} className={simulating ? "animate-spin" : ""} />
+                  {simulating ? "Simulating..." : "Trigger Webhook Event"}
                 </button>
 
                 {simulationStatus && (
-                  <div className="text-[11px] font-mono p-2 rounded bg-[#0a0e17] border border-[#1f2c42] text-cyan-300 leading-tight">
+                  <div className="text-[10px] font-mono p-2 rounded bg-[#070b14] border border-[#1d293d] text-cyan-300">
                     {simulationStatus}
                   </div>
                 )}
@@ -464,42 +505,95 @@ export default function Home() {
             </div>
           )}
 
+          {/* VIEW: RAG KNOWLEDGE BASE LIST */}
+          {navSection === "rag-kb" && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between text-xs font-mono text-gray-300">
+                <span>Stored Memories</span>
+                <button
+                  onClick={() => loadRagIncidents()}
+                  className="text-[10px] text-cyan-400 hover:underline flex items-center gap-1"
+                >
+                  <RefreshCw size={10} className={loadingRag ? "animate-spin" : ""} />
+                  Refresh
+                </button>
+              </div>
+              <p className="text-[11px] text-gray-400 font-mono leading-tight">
+                Vector memory indexing historical resolutions from your repository incidents.
+              </p>
+              <div className="space-y-2 max-h-[360px] overflow-y-auto pr-1">
+                {ragIncidents.map((inc) => (
+                  <div key={inc.id} className="p-2.5 rounded bg-[#0c121e] border border-[#1a2538] text-xs font-mono space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold text-cyan-300 text-[11px]">{inc.id}</span>
+                      <span className="text-[9px] px-1.5 py-0.2 rounded bg-purple-950 text-purple-300 border border-purple-500/30">
+                        {inc.category}
+                      </span>
+                    </div>
+                    <div className="text-[11px] text-gray-300 truncate">{inc.failed_step}</div>
+                    <div className="text-[10px] text-gray-400 line-clamp-2">{inc.resolution}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* VIEW: ANALYTICS OVERVIEW */}
+          {navSection === "analytics" && (
+            <div className="space-y-3">
+              <span className="text-xs font-mono text-gray-300">Incident Telemetry</span>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="p-2.5 rounded bg-[#0c121e] border border-[#1b263b]">
+                  <div className="text-[10px] font-mono text-gray-400 uppercase">Avg MTTR</div>
+                  <div className="text-lg font-bold text-emerald-400 font-mono mt-0.5">4.2m</div>
+                  <div className="text-[9px] text-emerald-500 font-mono">-68% vs Manual</div>
+                </div>
+                <div className="p-2.5 rounded bg-[#0c121e] border border-[#1b263b]">
+                  <div className="text-[10px] font-mono text-gray-400 uppercase">RAG Match Rate</div>
+                  <div className="text-lg font-bold text-cyan-400 font-mono mt-0.5">85%</div>
+                  <div className="text-[9px] text-cyan-500 font-mono">Continuous Learning</div>
+                </div>
+              </div>
+            </div>
+          )}
+
           {errorMsg && (
-            <div className="p-3 rounded-lg bg-rose-950/30 border border-rose-500/30 text-rose-300 text-xs font-mono leading-relaxed flex items-start gap-2">
-              <AlertCircle size={15} className="shrink-0 mt-0.5 text-rose-400" />
+            <div className="p-2.5 rounded-lg bg-rose-950/30 border border-rose-500/30 text-rose-300 text-xs font-mono flex items-start gap-2">
+              <AlertCircle size={14} className="shrink-0 mt-0.5 text-rose-400" />
               <div>{errorMsg}</div>
             </div>
           )}
         </div>
 
-        {/* Sidebar Footer */}
-        <div className="pt-4 border-t border-[#1a2333] flex items-center justify-between text-[11px] font-mono text-gray-500">
-          <span>Pillar 1: Push & Pull</span>
-          <span className="text-[#00f5d4]">v2.1-stream</span>
+        {/* Footer Info */}
+        <div className="pt-3 border-t border-[#172030] flex items-center justify-between text-[10px] font-mono text-gray-500">
+          <span>Datadog Architecture</span>
+          <span className="text-[#a855f7]">v2.2-pro</span>
         </div>
       </aside>
 
-      {/* MAIN VIEW */}
+      {/* 3. MAIN CONTENT WORKSPACE */}
       <main className="flex-1 h-screen flex flex-col overflow-hidden bg-[#070b12]">
-        {/* Top header bar */}
-        <div className="h-16 shrink-0 px-6 border-b border-[#1a2333] flex items-center justify-between bg-[#0a0e17]/80 backdrop-blur z-10">
+        {/* Top Datadog Breadcrumb Bar */}
+        <div className="h-14 shrink-0 px-6 border-b border-[#172030] flex items-center justify-between bg-[#080d18]/90 backdrop-blur z-10">
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-2 text-xs font-mono text-gray-400">
-              <FolderGit2 size={16} className="text-cyan-400" />
+              <FolderGit2 size={15} className="text-[#a855f7]" />
               <span className="text-white font-medium">
-                {activeTab === "on-demand"
-                  ? owner && repoName
-                    ? `${owner} / ${repoName}`
-                    : "No Repository Selected"
-                  : "Live Ingested Webhook Stream"}
+                {owner && repoName ? `${owner} / ${repoName}` : "DevOps Workspace"}
               </span>
             </div>
 
-            {activeTab === "on-demand" && logsData && (
+            <span className="text-gray-600 text-xs">/</span>
+            <span className="text-xs font-mono text-cyan-400 font-medium capitalize">
+              {navSection.replace("-", " ")}
+            </span>
+
+            {logsData && (
               <>
                 <span className="text-gray-600 text-xs">/</span>
                 <span
-                  className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-mono font-medium ${
+                  className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-mono font-medium ${
                     logsData.status === "failing"
                       ? "bg-rose-500/10 text-rose-400 border border-rose-500/30"
                       : "bg-emerald-500/10 text-emerald-400 border border-emerald-500/30"
@@ -512,31 +606,32 @@ export default function Home() {
                   />
                   {logsData.status === "failing"
                     ? `${logsData.failure_count} Failed Run(s)`
-                    : "All Green"}
-                </span>
-              </>
-            )}
-
-            {activeTab === "webhooks" && (
-              <>
-                <span className="text-gray-600 text-xs">/</span>
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-mono font-medium bg-cyan-500/10 text-cyan-400 border border-cyan-500/30">
-                  <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
-                  {liveEvents.length} Captured Event(s)
+                    : "Pipeline Passing"}
                 </span>
               </>
             )}
           </div>
+
+          <div className="flex items-center gap-3 text-xs font-mono">
+            <span className="text-gray-400 flex items-center gap-1.5">
+              <Sparkles size={13} className="text-[#a855f7]" />
+              LLM: <strong className="text-white">qwen/qwen3.8-27b</strong>
+            </span>
+            <span className="text-gray-600">•</span>
+            <span className="text-gray-400 flex items-center gap-1.5">
+              <Database size={13} className="text-cyan-400" />
+              RAG: <strong className="text-cyan-300">{ragIncidents.length} Memories</strong>
+            </span>
+          </div>
         </div>
 
-        {/* Content stream */}
+        {/* Workspace Stream View */}
         <div className="flex-1 overflow-y-auto p-6 space-y-5">
-          {activeTab === "on-demand" ? (
-            /* ON DEMAND VIEW */
+          {navSection === "ci-cd" && (
             loadingLogs ? (
               <div className="flex flex-col items-center justify-center h-full gap-3 text-gray-400 font-mono text-sm">
-                <RefreshCw size={28} className="animate-spin text-[#00f5d4]" />
-                <p>Analyzing GitHub Actions runs and extracting failure traces...</p>
+                <RefreshCw size={28} className="animate-spin text-[#a855f7]" />
+                <p>Ingesting GitHub Actions logs & reasoning through LangChain...</p>
               </div>
             ) : logsData ? (
               logsData.extracted_logs && logsData.extracted_logs.length > 0 ? (
@@ -550,21 +645,22 @@ export default function Home() {
                   <CheckCircle2 size={42} className="text-emerald-400 mb-3" />
                   <h3 className="text-lg font-semibold text-white mb-1">Clean Pipeline!</h3>
                   <p className="text-xs text-gray-400 leading-relaxed font-mono">
-                    {logsData.message || "All recent workflow runs are passing successfully. No failed logs detected."}
+                    {logsData.message || "All recent workflow runs are passing successfully."}
                   </p>
                 </div>
               )
             ) : (
               <div className="flex flex-col items-center justify-center h-full max-w-md mx-auto text-center p-8 rounded-2xl border border-dashed border-[#1e293b] text-gray-500">
                 <Search size={36} className="text-gray-600 mb-3" />
-                <h3 className="text-sm font-medium text-gray-300 mb-1">Awaiting Target Selection</h3>
+                <h3 className="text-sm font-medium text-gray-300 mb-1">Select a Target Pipeline</h3>
                 <p className="text-xs text-gray-500 leading-relaxed font-mono">
-                  Select a repository from the left panel or switch to Webhooks mode to view live automated failures.
+                  Select a repository on the left or click "Scan Workflows" to extract logs and trigger AI analysis.
                 </p>
               </div>
             )
-          ) : (
-            /* WEBHOOK EVENTS STREAM VIEW */
+          )}
+
+          {navSection === "webhooks" && (
             liveEvents.length > 0 ? (
               <div className="space-y-4 max-w-6xl mx-auto">
                 {liveEvents.map((ev) => (
@@ -597,7 +693,6 @@ export default function Home() {
                       </div>
                     </div>
 
-                    {/* Diagnosed Jobs within Webhook */}
                     {ev.diagnosed_jobs && ev.diagnosed_jobs.length > 0 ? (
                       <div className="space-y-3">
                         {ev.diagnosed_jobs.map((dj, idx) => (
@@ -640,17 +735,146 @@ export default function Home() {
               </div>
             ) : (
               <div className="flex flex-col items-center justify-center h-full max-w-md mx-auto text-center p-8 rounded-2xl border border-dashed border-[#1e293b] text-gray-500">
-                <Webhook size={38} className="text-cyan-400/50 mb-3" />
-                <h3 className="text-sm font-medium text-gray-300 mb-1">
-                  Listening for GitHub Webhooks
-                </h3>
+                <Webhook size={38} className="text-[#a855f7]/50 mb-3" />
+                <h3 className="text-sm font-medium text-gray-300 mb-1">Live Webhook Receiver Active</h3>
                 <p className="text-xs text-gray-500 leading-relaxed font-mono">
-                  No webhook failure events captured yet. You can click{" "}
-                  <strong className="text-cyan-400">"Trigger Test Webhook Failure"</strong> in the
-                  sidebar to simulate a live failure event!
+                  Listening for GitHub push events. Click "Trigger Webhook Event" in the left drawer to test live streaming!
                 </p>
               </div>
             )
+          )}
+
+          {navSection === "rag-kb" && (
+            <div className="max-w-6xl mx-auto space-y-4">
+              <div className="flex items-center justify-between border-b border-[#192336] pb-3">
+                <div>
+                  <h3 className="text-base font-bold text-white flex items-center gap-2">
+                    <Database size={18} className="text-cyan-400" />
+                    Organizational RAG Incident Memories
+                  </h3>
+                  <p className="text-xs text-gray-400 font-mono mt-0.5">
+                    Continuous learning memory indexed with token similarity vectors.
+                  </p>
+                </div>
+                <span className="text-xs font-mono text-cyan-300 px-2.5 py-1 rounded bg-[#0d1829] border border-cyan-500/30">
+                  {ragIncidents.length} Stored Incidents
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {ragIncidents.map((inc) => (
+                  <div key={inc.id} className="p-4 rounded-xl bg-[#0c121e] border border-[#1b263b] shadow-lg space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="font-mono text-xs font-bold text-cyan-300">{inc.id}</span>
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-purple-950/70 text-purple-300 border border-purple-500/30">
+                        {inc.category}
+                      </span>
+                    </div>
+
+                    <div className="text-xs font-mono text-gray-300">
+                      <span className="text-gray-500">Failing Target: </span>
+                      {inc.failed_step}
+                    </div>
+
+                    {inc.plain_summary && (
+                      <p className="text-xs text-gray-300 font-sans leading-relaxed bg-[#111828] p-2.5 rounded-lg border border-[#1b253b]">
+                        {inc.plain_summary}
+                      </p>
+                    )}
+
+                    <div className="p-2.5 rounded bg-emerald-950/20 border border-emerald-500/30 text-xs font-mono text-emerald-200">
+                      <span className="text-emerald-400 font-semibold block mb-0.5">Saved Resolution:</span>
+                      {inc.resolution}
+                    </div>
+
+                    <div className="text-[10px] font-mono text-gray-500 flex items-center justify-between pt-1 border-t border-[#182233]">
+                      <span>Repo: {inc.repository}</span>
+                      <span>{new Date(inc.created_at).toLocaleDateString()}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {navSection === "analytics" && (
+            <div className="max-w-6xl mx-auto space-y-6">
+              <div className="border-b border-[#192336] pb-3">
+                <h3 className="text-base font-bold text-white flex items-center gap-2">
+                  <BarChart3 size={18} className="text-[#a855f7]" />
+                  MTTR (Mean-Time-To-Resolution) & Pipeline Metrics
+                </h3>
+                <p className="text-xs text-gray-400 font-mono mt-0.5">
+                  Telemetry tracking the impact of AI auto-remediation on incident response times.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div className="p-4 rounded-xl bg-[#0c121e] border border-[#1b263b] shadow-lg">
+                  <div className="text-xs font-mono text-gray-400 uppercase">Avg MTTR with AI</div>
+                  <div className="text-2xl font-bold text-emerald-400 font-mono mt-1">4.2 min</div>
+                  <div className="text-xs text-emerald-500 font-mono mt-0.5">⬇ 68% vs 13.5 min manual</div>
+                </div>
+
+                <div className="p-4 rounded-xl bg-[#0c121e] border border-[#1b263b] shadow-lg">
+                  <div className="text-xs font-mono text-gray-400 uppercase">RAG Hit Rate</div>
+                  <div className="text-2xl font-bold text-cyan-400 font-mono mt-1">85.4%</div>
+                  <div className="text-xs text-cyan-500 font-mono mt-0.5">Matches past incidents</div>
+                </div>
+
+                <div className="p-4 rounded-xl bg-[#0c121e] border border-[#1b263b] shadow-lg">
+                  <div className="text-xs font-mono text-gray-400 uppercase">Triage Accuracy</div>
+                  <div className="text-2xl font-bold text-purple-400 font-mono mt-1">98.2%</div>
+                  <div className="text-xs text-purple-400 font-mono mt-0.5">Confidence weighted</div>
+                </div>
+
+                <div className="p-4 rounded-xl bg-[#0c121e] border border-[#1b263b] shadow-lg">
+                  <div className="text-xs font-mono text-gray-400 uppercase">Active LLM</div>
+                  <div className="text-lg font-bold text-white font-mono mt-1 truncate">qwen3.8-27b</div>
+                  <div className="text-xs text-gray-400 font-mono mt-0.5">Groq Inference Engine</div>
+                </div>
+              </div>
+
+              {/* Breakdown Category Cards */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="p-4 rounded-xl bg-[#0c121e] border border-[#1b263b] space-y-2">
+                  <span className="text-xs font-mono font-semibold text-rose-400">Top Failure Origins</span>
+                  <div className="space-y-1.5 text-xs font-mono">
+                    <div className="flex justify-between text-gray-300">
+                      <span>Configuration / YAML</span>
+                      <span className="text-rose-400">42%</span>
+                    </div>
+                    <div className="w-full bg-[#182233] h-1.5 rounded-full overflow-hidden">
+                      <div className="bg-rose-500 h-full w-[42%]" />
+                    </div>
+
+                    <div className="flex justify-between text-gray-300 pt-1">
+                      <span>Dependency & Lockfile</span>
+                      <span className="text-amber-400">31%</span>
+                    </div>
+                    <div className="w-full bg-[#182233] h-1.5 rounded-full overflow-hidden">
+                      <div className="bg-amber-500 h-full w-[31%]" />
+                    </div>
+
+                    <div className="flex justify-between text-gray-300 pt-1">
+                      <span>Test Assertions</span>
+                      <span className="text-cyan-400">27%</span>
+                    </div>
+                    <div className="w-full bg-[#182233] h-1.5 rounded-full overflow-hidden">
+                      <div className="bg-cyan-500 h-full w-[27%]" />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="p-4 rounded-xl bg-[#0c121e] border border-[#1b263b] space-y-2 md:col-span-2">
+                  <span className="text-xs font-mono font-semibold text-cyan-400">Continuous Learning Loop</span>
+                  <p className="text-xs text-gray-300 leading-relaxed font-mono">
+                    When pipeline failures occur across GitHub Actions, the assistant vectors error traces into <code className="text-cyan-300">incidents_kb.db</code>. 
+                    Subsequent pipeline runs retrieve these past organizational postmortems to resolve recurring build errors without human intervention.
+                  </p>
+                </div>
+              </div>
+            </div>
           )}
         </div>
       </main>

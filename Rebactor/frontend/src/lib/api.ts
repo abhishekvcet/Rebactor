@@ -41,6 +41,12 @@ export async function fetchRecentWebhookEvents() {
   return res.json();
 }
 
+export async function fetchRagIncidents() {
+  const res = await fetch(`${API_URL}/rag/incidents`);
+  if (!res.ok) throw new Error("Failed to load RAG incidents");
+  return res.json();
+}
+
 export async function simulateWebhookFailure(payload: {
   repo: string;
   workflow: string;
