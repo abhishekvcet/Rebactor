@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import { Lock, User, ArrowRight, Sparkles, Shield, Terminal, AlertCircle } from "lucide-react";
-import { TowerAnimation } from "./TowerAnimation";
+import { CicdStoryAnimation } from "./CicdStoryAnimation";
 
 interface LoginPageProps {
   onLoginSuccess: (user: { name: string; email: string; avatar?: string; role: string }) => void;
@@ -59,11 +59,10 @@ export function LoginPage({ onLoginSuccess }: LoginPageProps) {
 
   return (
     <div className="min-h-screen w-screen flex items-center justify-center bg-black text-[#e2e8f0] px-6 lg:px-16 py-10 select-none relative overflow-hidden">
-      {/* Background ambient lighting */}
-      <div className="absolute top-1/4 left-1/4 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[350px] bg-purple-900/10 blur-[140px] rounded-full pointer-events-none" />
-      <div className="absolute bottom-10 right-1/4 w-[500px] h-[300px] bg-cyan-900/10 blur-[130px] rounded-full pointer-events-none" />
+      {/* Background ambient lighting in pure monochrome subtle grey */}
+      <div className="absolute top-1/3 left-1/3 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[350px] bg-slate-800/10 blur-[150px] rounded-full pointer-events-none" />
 
-      {/* Split Grid: Left side Login Card | Right side 3D Tower Animation */}
+      {/* Split Grid: Left side Login Card | Right side 3D CI/CD Story */}
       <div className="w-full max-w-6xl z-10 grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-14 items-center">
         {/* LEFT COLUMN: Login Card & Brand */}
         <div className="lg:col-span-5 flex flex-col space-y-6">
@@ -207,9 +206,9 @@ export function LoginPage({ onLoginSuccess }: LoginPageProps) {
           </div>
         </div>
 
-        {/* RIGHT COLUMN: 3D Tower Animation */}
+        {/* RIGHT COLUMN: 3D Mathematical CI/CD Story Animation (Grey Stroke Only) */}
         <div className="lg:col-span-7 flex items-center justify-center w-full min-h-[460px]">
-          <TowerAnimation />
+          <CicdStoryAnimation />
         </div>
       </div>
     </div>
